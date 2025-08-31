@@ -109,11 +109,9 @@ name: "Nursing",
 {
   name: "User Management",
   items: [
-    { name: "Users", href: "/users", icon: UsersIcon },
-    { name: "Create Users", href: "/users/create-users", icon: UsersIcon },
-    { name: "Edit Users", href: "/users/edit-users", icon: UsersIcon },
-    { name: "View Users", href: "/users/view-users", icon: UsersIcon },
-    { name: "User-Roles", href: "/users/user-roles", icon: UsersIcon },
+    { name: "Users", href: "/user-management/users", icon: UsersIcon },
+    { name: "Modules", href: "/user-management/modules", icon: UsersIcon },
+    { name: "Roles & Permission", href: "/user-management/roles", icon: UsersIcon },
   ],
 },
 

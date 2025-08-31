@@ -10,6 +10,9 @@ import {
   Weight,
   Droplets,
   Save,
+  AlertTriangle,
+  WeightIcon,
+  Plus,
 } from "lucide-react";
 import {
   Card,
@@ -24,16 +27,22 @@ import { Textarea } from "@/components/ui/textarea";
 
 // --- Data type for vitals ---
 export interface VitalsData {
+  id?: string;
   height: string;
   weight: string;
   temperature: string;
   pulse: string;
   respiratoryRate: string;
-  bloodPressure: string;
+  bloodPressureSystolic: string;
+  bloodPressureDiastolic: string;
   oxygenSaturation: string;
   fbs: string;
   rbs: string;
+  painScale: string;
+  bodymassindex: string;
   comment?: string;
+  recordedAt?: string;
+  recordedBy?: string;
 }
 
 // --- Props for parent ---
@@ -58,10 +67,13 @@ export default function VitalsForm({ onSubmit, initialData }: VitalsFormProps) {
     temperature: "",
     pulse: "",
     respiratoryRate: "",
-    bloodPressure: "",
+    bloodPressureSystolic: "",
+    bloodPressureDiastolic: "",
     oxygenSaturation: "",
     fbs: "",
     rbs: "",
+    painScale: "",
+    bodymassindex: "",
     comment: "",
   });
 
@@ -71,86 +83,40 @@ export default function VitalsForm({ onSubmit, initialData }: VitalsFormProps) {
     }
   }, [initialData]);
 
-  const vitals: VitalSign[] = [
-    {
-      id: "bloodPressure",
-      label: "Blood Pressure",
-      unit: "mmHg",
-      icon: <Heart className="h-4 w-4 text-muted-foreground" />,
-      normalRange: "120/80 - 140/90",
-      required: true,
-    },
-    {
-      id: "temperature",
-      label: "Temperature",
-      unit: "°C",
-      icon: <Thermometer className="h-4 w-4 text-muted-foreground" />,
-      normalRange: "36.1 - 37.2",
-      required: true,
-    },
-    {
-      id: "pulse",
-      label: "Pulse",
-      unit: "bpm",
-      icon: <Activity className="h-4 w-4 text-muted-foreground" />,
-      normalRange: "60 - 100",
-      required: true,
-    },
-    {
-      id: "respiratoryRate",
-      label: "Respiratory Rate",
-      unit: "/min",
-      icon: <Wind className="h-4 w-4 text-muted-foreground" />,
-      normalRange: "12 - 20",
-      required: true,
-    },
-    {
-      id: "height",
-      label: "Height",
-      unit: "cm",
-      icon: <Ruler className="h-4 w-4 text-muted-foreground" />,
-      normalRange: "-",
-      required: false,
-    },
-    {
-      id: "weight",
-      label: "Weight",
-      unit: "kg",
-      icon: <Weight className="h-4 w-4 text-muted-foreground" />,
-      normalRange: "-",
-      required: false,
-    },
-    {
-      id: "oxygenSaturation",
-      label: "Oxygen Saturation",
-      unit: "%",
-      icon: <Droplets className="h-4 w-4 text-muted-foreground" />,
-      normalRange: "95 - 100",
-      required: false,
-    },
-    {
-      id: "fbs",
-      label: "FBS",
-      unit: "mg/dL",
-      icon: <Droplets className="h-4 w-4 text-muted-foreground" />,
-      normalRange: "70 - 99",
-      required: false,
-    },
-    {
-      id: "rbs",
-      label: "RBS",
-      unit: "mg/dL",
-      icon: <Droplets className="h-4 w-4 text-muted-foreground" />,
-      normalRange: "70 - 140",
-      required: false,
-    },
-  ];
+  // BMI calculation
+  const calculateBMI = (height: string, weight: string): string => {
+    const weightNum = parseFloat(weight);
+    const heightNum = parseFloat(height);
+    
+    if (weightNum && heightNum) {
+      const heightInM = heightNum / 100;
+      const bmiValue = weightNum / (heightInM * heightInM);
+      return bmiValue.toFixed(2);
+    }
+    return "";
+  };
+
+  const getBMICategory = (bmi: number): string => {
+    if (bmi < 18.5) return 'Underweight';
+    if (bmi < 25) return 'Normal weight';
+    if (bmi < 30) return 'Overweight';
+    return 'Obese';
+  };
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    setFormData((prev) => {
+      const newData = { ...prev, [name]: value };
+      if (name === 'height' || name === 'weight') {
+        newData.bodymassindex = calculateBMI(
+          name === 'height' ? value : prev.height,
+          name === 'weight' ? value : prev.weight
+        );
+      }
+      return newData;
+    });
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -161,62 +127,178 @@ export default function VitalsForm({ onSubmit, initialData }: VitalsFormProps) {
     });
   };
 
+  const bmi = parseFloat(formData.bodymassindex) || null;
+
+  // Vital signs configuration
+  const vitalSigns = [
+    {
+      id: 'temperature',
+      label: 'Temperature',
+      unit: '°C',
+      icon: <Thermometer className="h-4 w-4" />,
+      required: true,
+      placeholder: '36.5'
+    },
+    {
+      id: 'bloodPressureSystolic',
+      label: 'Systolic BP',
+      unit: 'mmHg',
+      icon: <Heart className="h-4 w-4" />,
+      required: true,
+      placeholder: '120'
+    },
+    {
+      id: 'bloodPressureDiastolic',
+      label: 'Diastolic BP',
+      unit: 'mmHg',
+      icon: <Heart className="h-4 w-4" />,
+      required: true,
+      placeholder: '80'
+    },
+    {
+      id: 'pulse',
+      label: 'Pulse',
+      unit: 'bpm',
+      icon: <Activity className="h-4 w-4" />,
+      required: true,
+      placeholder: '72'
+    },
+    {
+      id: 'respiratoryRate',
+      label: 'Respiratory Rate',
+      unit: '/min',
+      icon: <Wind className="h-4 w-4" />,
+      required: true,
+      placeholder: '16'
+    },
+    {
+      id: 'oxygenSaturation',
+      label: 'Oxygen Saturation',
+      unit: '%',
+      icon: <Droplets className="h-4 w-4" />,
+      required: false,
+      placeholder: '98'
+    },
+    {
+      id: 'height',
+      label: 'Height',
+      unit: 'cm',
+      icon: <Ruler className="h-4 w-4" />,
+      required: false,
+      placeholder: '170'
+    },
+    {
+      id: 'weight',
+      label: 'Weight',
+      unit: 'kg',
+      icon: <Weight className="h-4 w-4" />,
+      required: false,
+      placeholder: '70'
+    },
+    {
+      id: 'fbs',
+      label: 'FBS',
+      unit: 'mg/dL',
+      icon: <Droplets className="h-4 w-4" />,
+      required: false,
+      placeholder: '90'
+    },
+    {
+      id: 'rbs',
+      label: 'RBS',
+      unit: 'mg/dL',
+      icon: <Droplets className="h-4 w-4" />,
+      required: false,
+      placeholder: '120'
+    },
+    {
+      id: 'painScale',
+      label: 'Pain Scale',
+      unit: '/10',
+      icon: <AlertTriangle className="h-4 w-4" />,
+      required: false,
+      placeholder: '0'
+    },
+  ];
+
   return (
-    
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <CardTitle className="text-sm font-medium">
-          Vital Signs Recording
-        </CardTitle>
-        <Thermometer className="h-4 w-4 text-muted-foreground" />
-      </CardHeader>
+    <form onSubmit={handleSubmit}>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Plus className="h-5 w-5" />
+            Record New Vitals
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              {vitalSigns.map((vital) => (
+                <div key={vital.id} className="space-y-2">
+                  <Label htmlFor={vital.id} className="flex items-center gap-2">
+                    {vital.icon}
+                    {vital.label} ({vital.unit})
+                    {vital.required && <span className="text-red-500">*</span>}
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      id={vital.id}
+                      name={vital.id}
+                      type="number"
+                      step="0.1"
+                      value={formData[vital.id as keyof VitalsData] || ''}
+                      onChange={handleChange}
+                      required={vital.required}
+                      placeholder={vital.placeholder}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
 
-      <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Dynamically rendered fields */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {vitals.map((vital) => (
-              <div key={vital.id} className="space-y-1">
-                <Label htmlFor={vital.id} className="flex items-center gap-1">
-                  {vital.icon}
-                  {vital.label} ({vital.unit})
-                </Label>
-                <Input
-                  id={vital.id}
-                  name={vital.id}
-                  value={formData[vital.id] || ""}
-                  onChange={handleChange}
-                  required={vital.required}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Normal Range: {vital.normalRange}
+            {/* BMI Display */}
+            <div className="space-y-2">
+              <Label htmlFor="bodymassindex" className="flex items-center gap-2">
+                <WeightIcon className="h-4 w-4" />
+                Body Mass Index (kg/m²)
+              </Label>
+              <Input
+                id="bodymassindex"
+                name="bodymassindex"
+                type="text"
+                value={formData.bodymassindex}
+                readOnly
+              />
+              {bmi && (
+                <p className="text-sm text-gray-500">
+                  Category: {getBMICategory(bmi)}
                 </p>
-              </div>
-            ))}
-          </div>
+              )}
+            </div>
 
-          {/* Comments Field */}
-          <div className="space-y-1">
-            <Label htmlFor="comment">Additional Comments</Label>
-            <Textarea
-              id="comment"
-              name="comment"
-              value={formData.comment || ""}
-              onChange={handleChange}
-              placeholder="Additional Comments..."
-              className="min-h-[100px]"
-            />
-          </div>
+            {/* Comments */}
+            <div className="space-y-2">
+              <Label htmlFor="comment">Additional Comments</Label>
+              <Textarea
+                id="comment"
+                name="comment"
+                value={formData.comment || ''}
+                onChange={handleChange}
+                placeholder="Additional observations or notes..."
+                className="min-h-[80px]"
+              />
+            </div>
 
-          {/* Submit Button */}
-          <div className="flex justify-end">
-            <Button type="submit" className="flex items-center space-x-2">
-              <Save className="h-4 w-4" />
-              <span>Submit Vitals</span>
-            </Button>
+            {/* Submit Button */}
+            <div className="flex justify-end">
+              <Button type="submit" className="flex items-center space-x-2">
+                <Save className="h-4 w-4" />
+                <span>Submit Vitals</span>
+              </Button>
+            </div>
           </div>
-        </form>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+    </form>
   );
 }

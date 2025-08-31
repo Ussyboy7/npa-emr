@@ -11,9 +11,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Search, TestTube, Upload, FileText, Send, Edit, Eye, Clock, User, Download, Plus, X, Activity, Calendar, Beaker, CheckCircle2 } from "lucide-react";
 
 type Priority = "STAT" | "Urgent" | "Routine";
-type Status = "Pending" | "Collected" | "In Progress" | "Results Ready" | "Completed" | "Cancelled";
+type Status = "Pending" | "Collected" | "In Progress" | "Results Entered" | "Validated" | "Completed" | "Cancelled";
 type TestType = "In-house" | "Outsourced";
 type ResultStatus = "Normal" | "Abnormal" | "Critical";
+type ValidationStatus = "Pending" | "Validated";
 
 interface LabTest {
   id: string;
@@ -73,6 +74,7 @@ interface TestResult {
 
 interface LabResult {
   orderId: string;
+  testId: string;
   patientId: string;
   patientName: string;
   doctorName: string;
@@ -89,6 +91,10 @@ interface LabResult {
   outsourceLab?: string;
   uploadedFiles?: File[];
   templateUsed?: string;
+  validationStatus: ValidationStatus;
+  validatedBy?: string;
+  validatedDate?: string;
+  validatedTime?: string;
 }
 
 interface ResultTemplate {
@@ -171,7 +177,7 @@ const labOrdersMock: LabOrder[] = [
     patientName: "John Doe",
     doctorName: "Dr. Smith",
     priority: "Urgent",
-    status: "Collected",
+    status: "In Progress",
     orderDate: "2025-08-17",
     orderTime: "08:30 AM",
     expectedDate: "2025-08-17",
@@ -185,7 +191,7 @@ const labOrdersMock: LabOrder[] = [
     clinic: "GOP",
     location: "Headquarters",
     collectedBy: "Nurse Johnson",
-    testStatuses: {},
+    testStatuses: { "CBC001": "Results Entered", "LIP001": "Collected" },
     testResults: {}
   },
   {
@@ -195,7 +201,7 @@ const labOrdersMock: LabOrder[] = [
     patientName: "Jane Smith",
     doctorName: "Dr. Wilson",
     priority: "STAT",
-    status: "Results Ready",
+    status: "Results Entered",
     orderDate: "2025-08-17",
     orderTime: "07:45 AM",
     expectedDate: "2025-08-17",
@@ -213,7 +219,7 @@ const labOrdersMock: LabOrder[] = [
     collectedBy: "Lab Tech A",
     processedBy: "Lab Tech B",
     reviewedBy: "Dr. PathologistName",
-    testStatuses: {},
+    testStatuses: { "TSH001": "Results Entered" },
     testResults: {}
   },
   {
@@ -237,6 +243,46 @@ const labOrdersMock: LabOrder[] = [
     testStatuses: {},
     testResults: {}
   }
+];
+
+// Mock lab results data for testing
+const labResultsMock: LabResult[] = [
+  {
+    orderId: "ORD-2024-001",
+    testId: "CBC001",
+    patientId: "P001",
+    patientName: "John Doe",
+    doctorName: "Dr. Smith",
+    resultDate: "2025-08-17",
+    resultTime: "10:00 AM",
+    results: [
+      { testId: "CBC001", testName: "White Blood Cells", value: "5.2", unit: "×10³/μL", normalRange: "4.0-11.0", status: "Normal" },
+      { testId: "CBC001", testName: "Red Blood Cells", value: "4.8", unit: "×10⁶/μL", normalRange: "4.2-5.4", status: "Normal" },
+    ],
+    overallStatus: "Normal",
+    technician: "Lab Tech A",
+    isOutsourced: false,
+    validationStatus: "Validated",
+    validatedBy: "Lab Head",
+    validatedDate: "2025-08-17",
+    validatedTime: "12:00 PM",
+  },
+  {
+    orderId: "ORD-2024-002",
+    testId: "TSH001",
+    patientId: "P002",
+    patientName: "Jane Smith",
+    doctorName: "Dr. Wilson",
+    resultDate: "2025-08-17",
+    resultTime: "11:30 AM",
+    results: [
+      { testId: "TSH001", testName: "TSH", value: "2.5", unit: "mIU/L", normalRange: "0.4-4.0", status: "Normal" },
+    ],
+    overallStatus: "Normal",
+    technician: "Lab Tech B",
+    isOutsourced: true,
+    validationStatus: "Pending",
+  },
 ];
 
 // Mock result templates
@@ -303,14 +349,14 @@ export default function LabPoolQueue() {
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [activeTab, setActiveTab] = useState("queue");
   const [selectedTestId, setSelectedTestId] = useState<string | null>(null);
-  const [selectedTests, setSelectedTests] = useState<string[]>([]);
+  const [selectedTests, setSelectedTests] = useState<{ [orderId: string]: string[] }>({});
   const [isEdit, setIsEdit] = useState(true);
 
   const itemsPerPage = 5;
 
   const [labOrders, setLabOrders] = useState<LabOrder[]>(labOrdersMock);
   const [resultTemplates, setResultTemplates] = useState<ResultTemplate[]>(resultTemplatesData);
-  const [labResults, setLabResults] = useState<LabResult[]>([]);
+  const [labResults, setLabResults] = useState<LabResult[]>(labResultsMock);
 
   // Utility functions
   const getPriorityColor = (priority: Priority) => {
@@ -327,9 +373,18 @@ export default function LabPoolQueue() {
       case "Pending": return "bg-gray-100 text-gray-800 border-gray-200";
       case "Collected": return "bg-blue-100 text-blue-800 border-blue-200";
       case "In Progress": return "bg-yellow-100 text-yellow-800 border-yellow-200";
-      case "Results Ready": return "bg-green-100 text-green-800 border-green-200";
+      case "Results Entered": return "bg-purple-100 text-purple-800 border-purple-200";
+      case "Validated": return "bg-indigo-100 text-indigo-800 border-indigo-200";
       case "Completed": return "bg-green-100 text-green-800 border-green-200";
       case "Cancelled": return "bg-red-100 text-red-800 border-red-200";
+      default: return "bg-gray-100 text-gray-800 border-gray-200";
+    }
+  };
+
+  const getValidationStatusColor = (status: ValidationStatus) => {
+    switch (status) {
+      case "Pending": return "bg-yellow-100 text-yellow-800 border-yellow-200";
+      case "Validated": return "bg-green-100 text-green-800 border-green-200";
       default: return "bg-gray-100 text-gray-800 border-gray-200";
     }
   };
@@ -359,10 +414,10 @@ export default function LabPoolQueue() {
     return "Normal";
   };
 
-  const handleSubmitResults = (selectedTests: string[]) => {
+  const handleSubmitResults = (selectedTestsForOrder: string[]) => {
     if (!selectedOrder || !selectedTemplate) return;
     
-    const testsToProcess = selectedTests.length > 0 ? selectedTests : selectedOrder.tests.map(t => t.id);
+    const testsToProcess = selectedTestsForOrder.length > 0 ? selectedTestsForOrder : selectedOrder.tests.map(t => t.id);
     
     testsToProcess.forEach((testId) => {
       const test = selectedOrder.tests.find((t) => t.id === testId);
@@ -379,6 +434,7 @@ export default function LabPoolQueue() {
 
       const newResult: LabResult = {
         orderId: selectedOrder.orderId,
+        testId: testId,
         patientId: selectedOrder.patientId,
         patientName: selectedOrder.patientName,
         doctorName: selectedOrder.doctorName,
@@ -390,6 +446,7 @@ export default function LabPoolQueue() {
         isOutsourced: test.testType === "Outsourced",
         uploadedFiles: [...uploadedFiles],
         templateUsed: selectedTemplate.id,
+        validationStatus: "Pending",
       };
 
       setLabResults((prev) => [...prev, newResult]);
@@ -400,19 +457,20 @@ export default function LabPoolQueue() {
       if (order.id === selectedOrder.id) {
         const updatedTestStatuses = { ...order.testStatuses };
         testsToProcess.forEach((testId) => {
-          updatedTestStatuses[testId] = "Results Ready";
+          updatedTestStatuses[testId] = "Results Entered";
         });
         
-        // Check if all tests are complete
-        const allTestsComplete = order.tests.every((test) => 
-          updatedTestStatuses[test.id] === "Results Ready" || 
+        // Check if all tests have results entered
+        const allTestsEntered = order.tests.every((test) => 
+          updatedTestStatuses[test.id] === "Results Entered" || 
+          updatedTestStatuses[test.id] === "Validated" || 
           updatedTestStatuses[test.id] === "Completed"
         );
         
         return {
           ...order,
           testStatuses: updatedTestStatuses,
-          status: allTestsComplete ? "Results Ready" : "In Progress"
+          status: allTestsEntered ? "Results Entered" : "In Progress"
         };
       }
       return order;
@@ -422,7 +480,103 @@ export default function LabPoolQueue() {
     setResultData({});
     setUploadedFiles([]);
     setSelectedTemplate(null);
-    setSelectedTests([]);
+    setSelectedTests(prev => ({ ...prev, [selectedOrder.id]: [] }));
+  };
+
+  const validateResult = (orderId: string, testId: string) => {
+    setLabResults((prev) =>
+      prev.map((r) =>
+        r.orderId === orderId && r.testId === testId
+          ? {
+              ...r,
+              validationStatus: "Validated",
+              validatedBy: "Lab Head", // Mock, replace with actual user in real app
+              validatedDate: new Date().toISOString().split("T")[0],
+              validatedTime: new Date().toLocaleTimeString("en-US", {
+                hour: "2-digit",
+                minute: "2-digit",
+                hour12: true,
+              }),
+            }
+          : r
+      )
+    );
+
+    // Update test status in order
+    setLabOrders((prev) =>
+      prev.map((o) => {
+        if (o.orderId === orderId) {
+          const updatedTestStatuses = { ...o.testStatuses, [testId]: "Validated" };
+          const allValidated = o.tests.every(
+            (t) => updatedTestStatuses[t.id] === "Validated" || updatedTestStatuses[t.id] === "Completed"
+          );
+          return {
+            ...o,
+            testStatuses: updatedTestStatuses,
+            status: allValidated ? "Validated" : o.status,
+          };
+        }
+        return o;
+      })
+    );
+  };
+
+  const sendResult = (result: LabResult) => {
+    setLabOrders((prev) =>
+      prev.map((o) => {
+        if (o.orderId === result.orderId) {
+          const updatedTestStatuses = { ...o.testStatuses, [result.testId]: "Completed" };
+          const allCompleted = o.tests.every((t) => updatedTestStatuses[t.id] === "Completed");
+          return {
+            ...o,
+            testStatuses: updatedTestStatuses,
+            status: allCompleted ? "Completed" : o.status,
+          };
+        }
+        return o;
+      })
+    );
+    alert(`Sent result for test ${result.testId} to doctor`);
+  };
+
+  const sendAllToDoctor = (order: LabOrder) => {
+    const updatedTestStatuses: { [key: string]: Status } = {};
+    order.tests.forEach((t) => (updatedTestStatuses[t.id] = "Completed"));
+    setLabOrders((prev) =>
+      prev.map((o) => (o.id === order.id ? { ...o, testStatuses: updatedTestStatuses, status: "Completed" } : o))
+    );
+    alert(`Sent all results for order ${order.orderId} to doctor`);
+  };
+
+  const sendSelectedResults = (order: LabOrder) => {
+    const sel = selectedTests[order.id] || [];
+    if (sel.length === 0) return;
+
+    const canSend = sel.every((id) => order.testStatuses?.[id] === "Validated");
+    if (!canSend) {
+      alert("Selected tests must be validated before sending");
+      return;
+    }
+
+    setLabOrders((prev) =>
+      prev.map((o) => {
+        if (o.id === order.id) {
+          const updatedTestStatuses = { ...o.testStatuses };
+          sel.forEach((id) => (updatedTestStatuses[id] = "Completed"));
+          const allCompleted = o.tests.every((t) => updatedTestStatuses[t.id] === "Completed");
+          return {
+            ...o,
+            testStatuses: updatedTestStatuses,
+            status: allCompleted ? "Completed" : o.status,
+          };
+        }
+        return o;
+      })
+    );
+
+    setSelectedTests(prev => ({ ...prev, [order.id]: [] }));
+
+    alert(`Sent ${sel.length} validated test results to doctor`);
   };
 
   // Filter and pagination logic
@@ -449,7 +603,8 @@ export default function LabPoolQueue() {
     pending: labOrders.filter(order => order.status === "Pending").length,
     collected: labOrders.filter(order => order.status === "Collected").length,
     inProgress: labOrders.filter(order => order.status === "In Progress").length,
-    resultsReady: labOrders.filter(order => order.status === "Results Ready").length,
+    resultsEntered: labOrders.filter(order => order.status === "Results Entered").length,
+    validated: labOrders.filter(order => order.status === "Validated").length,
     completed: labOrders.filter(order => order.status === "Completed").length,
     stat: labOrders.filter(order => order.priority === "STAT").length,
     urgent: labOrders.filter(order => order.priority === "Urgent").length,
@@ -471,7 +626,7 @@ export default function LabPoolQueue() {
                 hour12: true 
               })
             }),
-            ...(newStatus === "Results Ready" && {
+            ...(newStatus === "Completed" && {
               completedDate: new Date().toISOString().split('T')[0],
               completedTime: new Date().toLocaleTimeString('en-US', {
                 hour: '2-digit',
@@ -544,38 +699,6 @@ export default function LabPoolQueue() {
     setSelectedTemplate(template);
     setIsEdit(false);
     setShowTemplateEditor(true);
-  };
-
-  // Send selected test results to doctor
-  const sendSelectedResults = (order: LabOrder) => {
-    if (selectedTests.length === 0) return;
-    
-    // Mark selected tests as completed
-    setLabOrders(prev => prev.map(o => {
-      if (o.id === order.id) {
-        const updatedTestStatuses = { ...o.testStatuses };
-        selectedTests.forEach(testId => {
-          if (o.tests.some(test => test.id === testId)) {
-            updatedTestStatuses[testId] = "Completed";
-          }
-        });
-        
-        // Check if all tests are now complete
-        const allComplete = o.tests.every(test => 
-          updatedTestStatuses[test.id] === "Completed"
-        );
-        
-        return {
-          ...o,
-          testStatuses: updatedTestStatuses,
-          status: allComplete ? "Completed" : o.status
-        };
-      }
-      return o;
-    }));
-    
-    alert(`Sent ${selectedTests.length} test results to doctor`);
-    setSelectedTests([]);
   };
 
   // Handle file upload
@@ -765,7 +888,7 @@ export default function LabPoolQueue() {
             <Button variant="outline" onClick={() => setShowResultEntry(false)}>
               Cancel
             </Button>
-            <Button onClick={() => handleSubmitResults(selectedTests)}>
+            <Button onClick={() => handleSubmitResults(selectedTests[selectedOrder.id] || [])}>
               <Send className="mr-2 h-4 w-4" />
               Submit Results
             </Button>
@@ -933,7 +1056,7 @@ export default function LabPoolQueue() {
       {activeTab === "queue" && (
         <>
           {/* Summary Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-7 gap-4">
             <Card className="bg-card text-card-foreground transition hover:shadow-lg hover:scale-[1.02]">
               <CardHeader className="flex items-center justify-between pb-2">
                 <CardTitle className="text-sm font-medium">Total Orders</CardTitle>
@@ -980,12 +1103,34 @@ export default function LabPoolQueue() {
 
             <Card className="bg-card text-card-foreground transition hover:shadow-lg hover:scale-[1.02]">
               <CardHeader className="flex items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Results Ready</CardTitle>
+                <CardTitle className="text-sm font-medium">Results Entered</CardTitle>
+                <FileText className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-purple-600">{stats.resultsEntered}</div>
+                <p className="text-xs text-muted-foreground">Awaiting validation</p>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-card text-card-foreground transition hover:shadow-lg hover:scale-[1.02]">
+              <CardHeader className="flex items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium">Validated</CardTitle>
                 <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-green-600">{stats.resultsReady}</div>
-                <p className="text-xs text-muted-foreground">Ready for review</p>
+                <div className="text-2xl font-bold text-indigo-600">{stats.validated}</div>
+                <p className="text-xs text-muted-foreground">Ready to send</p>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-card text-card-foreground transition hover:shadow-lg hover:scale-[1.02]">
+              <CardHeader className="flex items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium">Completed</CardTitle>
+                <Send className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-green-600">{stats.completed}</div>
+                <p className="text-xs text-muted-foreground">Sent to doctor</p>
               </CardContent>
             </Card>
 
@@ -1039,7 +1184,8 @@ export default function LabPoolQueue() {
                     <SelectItem value="Pending">Pending</SelectItem>
                     <SelectItem value="Collected">Collected</SelectItem>
                     <SelectItem value="In Progress">In Progress</SelectItem>
-                    <SelectItem value="Results Ready">Results Ready</SelectItem>
+                    <SelectItem value="Results Entered">Results Entered</SelectItem>
+                    <SelectItem value="Validated">Validated</SelectItem>
                     <SelectItem value="Completed">Completed</SelectItem>
                     <SelectItem value="Cancelled">Cancelled</SelectItem>
                   </SelectContent>
@@ -1110,208 +1256,213 @@ export default function LabPoolQueue() {
           {/* Queue Items */}
           <div className="space-y-4">
             {paginatedOrders.length > 0 ? (
-              paginatedOrders.map((order) => (
-                <Card key={order.id} className="hover:shadow-md transition-shadow">
-                  <CardHeader className="pb-3">
-                    <div className="flex items-start justify-between">
-                      <div className="space-y-1">
-                        <CardTitle className="text-lg flex items-center gap-3">
-                          <span>{order.patientName}</span>
-                          <span className="text-sm text-muted-foreground font-normal">
-                            Order: {order.orderId}
-                          </span>
-                        </CardTitle>
-                        <CardDescription className="text-sm">
-                          <div className="flex items-center gap-2 mb-2">
-                            <User className="h-4 w-4 text-muted-foreground" />
-                            <span><strong>Doctor:</strong> {order.doctorName}</span>
-                            <Calendar className="h-4 w-4 text-muted-foreground ml-4" />
-                            <span><strong>Ordered:</strong> {formatDate(order.orderDate)} at {order.orderTime}</span>
-                          </div>
-                          <div className="space-y-1">
-                            <div className="flex flex-wrap gap-4 text-xs">
-                              <span><strong>Age:</strong> {order.age} yrs</span>
-                              <span><strong>Gender:</strong> {order.gender}</span>
-                              <span><strong>Phone:</strong> {order.phoneNumber}</span>
-                              <span><strong>Clinic:</strong> {order.clinic}</span>
-                              <span><strong>Location:</strong> {order.location}</span>
+              paginatedOrders.map((order) => {
+                const selectedForThis = (selectedTests[order.id] || []).length;
+                return (
+                  <Card key={order.id} className="hover:shadow-md transition-shadow">
+                    <CardHeader className="pb-3">
+                      <div className="flex items-start justify-between">
+                        <div className="space-y-1">
+                          <CardTitle className="text-lg flex items-center gap-3">
+                            <span>{order.patientName}</span>
+                            <span className="text-sm text-muted-foreground font-normal">
+                              Order: {order.orderId}
+                            </span>
+                          </CardTitle>
+                          <CardDescription className="text-sm">
+                            <div className="flex items-center gap-2 mb-2">
+                              <User className="h-4 w-4 text-muted-foreground" />
+                              <span><strong>Doctor:</strong> {order.doctorName}</span>
+                              <Calendar className="h-4 w-4 text-muted-foreground ml-4" />
+                              <span><strong>Ordered:</strong> {formatDate(order.orderDate)} at {order.orderTime}</span>
                             </div>
-                            <div>
-                              <strong>Clinical Notes:</strong> {order.clinicalNotes}
-                            </div>
-                            {order.specialInstructions && (
+                            <div className="space-y-1">
+                              <div className="flex flex-wrap gap-4 text-xs">
+                                <span><strong>Age:</strong> {order.age} yrs</span>
+                                <span><strong>Gender:</strong> {order.gender}</span>
+                                <span><strong>Phone:</strong> {order.phoneNumber}</span>
+                                <span><strong>Clinic:</strong> {order.clinic}</span>
+                                <span><strong>Location:</strong> {order.location}</span>
+                              </div>
                               <div>
-                                <strong>Special Instructions:</strong> {order.specialInstructions}
+                                <strong>Clinical Notes:</strong> {order.clinicalNotes}
                               </div>
-                            )}
-                            {order.collectionDate && (
-                              <div className="text-blue-600">
-                                <strong>Collected:</strong> {formatDate(order.collectionDate)} at {order.collectionTime} by {order.collectedBy}
-                              </div>
-                            )}
-                            {order.completedDate && (
-                              <div className="text-green-600">
-                                <strong>Completed:</strong> {formatDate(order.completedDate)} at {order.completedTime}
-                              </div>
-                            )}
-                          </div>
-                        </CardDescription>
-                      </div>
-                      <div className="flex items-center space-x-2 flex-shrink-0">
-                        <Badge className={getPriorityColor(order.priority)} variant="outline">
-                          {order.priority}
-                        </Badge>
-                        <Badge className={getStatusColor(order.status)} variant="outline">
-                          {order.status}
-                        </Badge>
-                        {order.tests.some(test => test.testType === "Outsourced") && (
-                          <Badge className="bg-purple-100 text-purple-800 border-purple-200" variant="outline">
-                            Outsourced
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="pt-0">
-                    <div className="space-y-4">
-                      {/* Test Details */}
-                      <div>
-                        <strong className="text-sm">Tests Ordered ({order.tests.length}):</strong>
-                        <div className="mt-2 space-y-2">
-                          {order.tests.map((test, index) => (
-                            <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded">
-                              <div className="flex items-center gap-2">
-                                <Checkbox
-                                  checked={selectedTests.includes(test.id)}
-                                  onCheckedChange={(checked) => {
-                                    if (checked) {
-                                      setSelectedTests(prev => [...prev, test.id]);
-                                    } else {
-                                      setSelectedTests(prev => prev.filter(id => id !== test.id));
-                                    }
-                                  }}
-                                />
+                              {order.specialInstructions && (
                                 <div>
-                                  <span className="font-medium">{test.name}</span>
-                                  <span className="text-sm text-gray-500 ml-2">({test.code})</span>
-                                  {order.testStatuses?.[test.id] && (
-                                    <Badge className={`${getStatusColor(order.testStatuses[test.id])} ml-2`} variant="outline">
-                                      {order.testStatuses[test.id]}
-                                    </Badge>
-                                  )}
+                                  <strong>Special Instructions:</strong> {order.specialInstructions}
                                 </div>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <Select
-                                  value={test.testType}
-                                  onValueChange={(value: TestType) => updateTestType(order.id, test.id, value)}
-                                >
-                                  <SelectTrigger className="w-[120px]">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="In-house">In-house</SelectItem>
-                                    <SelectItem value="Outsourced">Outsourced</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                                <span className="text-xs text-gray-500">{test.turnaroundTime}</span>
-                              </div>
+                              )}
+                              {order.collectionDate && (
+                                <div className="text-blue-600">
+                                  <strong>Collected:</strong> {formatDate(order.collectionDate)} at {order.collectionTime} by {order.collectedBy}
+                                </div>
+                              )}
+                              {order.completedDate && (
+                                <div className="text-green-600">
+                                  <strong>Completed:</strong> {formatDate(order.completedDate)} at {order.completedTime}
+                                </div>
+                              )}
                             </div>
-                          ))}
+                          </CardDescription>
+                        </div>
+                        <div className="flex items-center space-x-2 flex-shrink-0">
+                          <Badge className={getPriorityColor(order.priority)} variant="outline">
+                            {order.priority}
+                          </Badge>
+                          <Badge className={getStatusColor(order.status)} variant="outline">
+                            {order.status}
+                          </Badge>
+                          {order.tests.some(test => test.testType === "Outsourced") && (
+                            <Badge className="bg-purple-100 text-purple-800 border-purple-200" variant="outline">
+                              Outsourced
+                            </Badge>
+                          )}
                         </div>
                       </div>
+                    </CardHeader>
+                    <CardContent className="pt-0">
+                      <div className="space-y-4">
+                        {/* Test Details */}
+                        <div>
+                          <strong className="text-sm">Tests Ordered ({order.tests.length}):</strong>
+                          <div className="mt-2 space-y-2">
+                            {order.tests.map((test, index) => (
+                              <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                                <div className="flex items-center gap-2">
+                                  <Checkbox
+                                    checked={(selectedTests[order.id] || []).includes(test.id)}
+                                    onCheckedChange={(checked) => {
+                                      setSelectedTests(prev => {
+                                        const current = prev[order.id] || [];
+                                        return {
+                                          ...prev,
+                                          [order.id]: checked ? [...current, test.id] : current.filter(id => id !== test.id)
+                                        };
+                                      });
+                                    }}
+                                  />
+                                  <div>
+                                    <span className="font-medium">{test.name}</span>
+                                    <span className="text-sm text-gray-500 ml-2">({test.code})</span>
+                                    {order.testStatuses?.[test.id] && (
+                                      <Badge className={`${getStatusColor(order.testStatuses[test.id])} ml-2`} variant="outline">
+                                        {order.testStatuses[test.id]}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Select
+                                    value={test.testType}
+                                    onValueChange={(value: TestType) => updateTestType(order.id, test.id, value)}
+                                  >
+                                    <SelectTrigger className="w-[120px]">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="In-house">In-house</SelectItem>
+                                      <SelectItem value="Outsourced">Outsourced</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                  <span className="text-xs text-gray-500">{test.turnaroundTime}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
 
-                      {/* Action Buttons */}
-                      <div className="flex justify-end space-x-2 flex-wrap">
-                        {order.status === "Pending" && (
-                          <Button 
-                            size="sm" 
-                            onClick={() => updateOrderStatus(order.id, "Collected")}
-                            className="hover:bg-blue-600"
-                          >
-                            <Beaker className="h-4 w-4 mr-1" />
-                            Mark Collected
-                          </Button>
-                        )}
-                        {order.status === "Collected" && (
-                          <Button 
-                            size="sm"
-                            onClick={() => updateOrderStatus(order.id, "In Progress")}
-                            className="hover:bg-yellow-600"
-                          >
-                            <Activity className="h-4 w-4 mr-1" />
-                            Start Processing
-                          </Button>
-                        )}
-                        {(order.status === "In Progress" || order.status === "Collected") && (
-                          <Button 
-                            size="sm"
-                            onClick={() => {
-                              setSelectedOrder(order);
-                              setShowResultEntry(true);
-                            }}
-                            className="hover:bg-green-600"
-                          >
-                            <FileText className="h-4 w-4 mr-1" />
-                            Enter Results
-                          </Button>
-                        )}
-                        {(order.status === "In Progress" || order.status === "Results Ready") && selectedTests.length > 0 && (
-                          <Button 
-                            size="sm"
-                            onClick={() => sendSelectedResults(order)}
-                            className="hover:bg-green-600"
-                          >
-                            <Send className="h-4 w-4 mr-1" />
-                            Send Selected ({selectedTests.length})
-                          </Button>
-                        )}
-                        {(order.status === "In Progress" || order.status === "Results Ready") && (
-                          <Button 
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setSelectedTests(order.tests.map(t => t.id))}
-                          >
-                            Select All Tests
-                          </Button>
-                        )}
-                        {order.status === "Results Ready" && (
-                          <>
+                        {/* Action Buttons */}
+                        <div className="flex justify-end space-x-2 flex-wrap">
+                          {order.status === "Pending" && (
                             <Button 
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                const result = labResults.find(r => r.orderId === order.orderId);
-                                if (result) generatePDFReport(result);
-                              }}
+                              size="sm" 
+                              onClick={() => updateOrderStatus(order.id, "Collected")}
+                              className="hover:bg-blue-600"
                             >
-                              <Download className="h-4 w-4 mr-1" />
-                              Download PDF
+                              <Beaker className="h-4 w-4 mr-1" />
+                              Mark Collected
                             </Button>
+                          )}
+                          {order.status === "Collected" && (
                             <Button 
                               size="sm"
-                              onClick={() => updateOrderStatus(order.id, "Completed")}
+                              onClick={() => updateOrderStatus(order.id, "In Progress")}
+                              className="hover:bg-yellow-600"
+                            >
+                              <Activity className="h-4 w-4 mr-1" />
+                              Start Processing
+                            </Button>
+                          )}
+                          {(order.status === "In Progress" || order.status === "Collected") && (
+                            <Button 
+                              size="sm"
+                              onClick={() => {
+                                setSelectedOrder(order);
+                                setShowResultEntry(true);
+                              }}
+                              className="hover:bg-green-600"
+                            >
+                              <FileText className="h-4 w-4 mr-1" />
+                              Enter Results
+                            </Button>
+                          )}
+                          {(order.status === "Results Entered" || order.status === "Validated") && selectedForThis > 0 && (
+                            <Button 
+                              size="sm"
+                              onClick={() => sendSelectedResults(order)}
                               className="hover:bg-green-600"
                             >
                               <Send className="h-4 w-4 mr-1" />
-                              Send All to Doctor
+                              Send Selected ({selectedForThis})
                             </Button>
-                          </>
-                        )}
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          className="hover:bg-blue-50"
-                          onClick={() => alert(`Viewing details for order ${order.orderId}`)}
-                        >
-                          <Eye className="h-4 w-4 mr-1" />
-                          View Details
-                        </Button>
+                          )}
+                          {(order.status === "Results Entered" || order.status === "Validated") && (
+                            <Button 
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setSelectedTests(prev => ({ ...prev, [order.id]: order.tests.map(t => t.id) }))}
+                            >
+                              Select All Tests
+                            </Button>
+                          )}
+                          {order.status === "Validated" && (
+                            <>
+                              <Button 
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  const result = labResults.find(r => r.orderId === order.orderId);
+                                  if (result) generatePDFReport(result);
+                                }}
+                              >
+                                <Download className="h-4 w-4 mr-1" />
+                                Download PDF
+                              </Button>
+                              <Button 
+                                size="sm"
+                                onClick={() => sendAllToDoctor(order)}
+                                className="hover:bg-green-600"
+                              >
+                                <Send className="h-4 w-4 mr-1" />
+                                Send All to Doctor
+                              </Button>
+                            </>
+                          )}
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="hover:bg-blue-50"
+                            onClick={() => alert(`Viewing details for order ${order.orderId}`)}
+                          >
+                            <Eye className="h-4 w-4 mr-1" />
+                            View Details
+                          </Button>
+                        </div>
                       </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))
+                    </CardContent>
+                  </Card>
+                );
+              })
             ) : (
               <Card>
                 <CardContent className="py-12 text-center">
@@ -1411,12 +1562,15 @@ export default function LabPoolQueue() {
                       <div>
                         <CardTitle className="text-lg">{result.patientName}</CardTitle>
                         <CardDescription>
-                          Order: {result.orderId} | {formatDate(result.resultDate)} at {result.resultTime}
+                          Order: {result.orderId} | Test: {result.testId} | {formatDate(result.resultDate)} at {result.resultTime}
                         </CardDescription>
                       </div>
                       <div className="flex items-center gap-2">
                         <Badge className={getResultStatusColor(result.overallStatus)} variant="outline">
                           {result.overallStatus}
+                        </Badge>
+                        <Badge className={getValidationStatusColor(result.validationStatus)} variant="outline">
+                          {result.validationStatus}
                         </Badge>
                         {result.isOutsourced && (
                           <Badge className="bg-purple-100 text-purple-800 border-purple-200" variant="outline">
@@ -1443,6 +1597,11 @@ export default function LabPoolQueue() {
                         {result.outsourceLab && (
                           <div>
                             <strong>External Lab:</strong> {result.outsourceLab}
+                          </div>
+                        )}
+                        {result.validationStatus === "Validated" && (
+                          <div>
+                            <strong>Validated by:</strong> {result.validatedBy} on {result.validatedDate} at {result.validatedTime}
                           </div>
                         )}
                       </div>
@@ -1487,29 +1646,40 @@ export default function LabPoolQueue() {
                         <Button 
                           variant="outline" 
                           size="sm"
-                          onClick={() => generatePDFReport(result)}
-                        >
-                          <Download className="h-4 w-4 mr-1" />
-                          Download PDF
-                        </Button>
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          onClick={() => alert(`Viewing details for result of order ${result.orderId}`)}
+                          onClick={() => alert(`Viewing details for result of order ${result.orderId} test ${result.testId}`)}
                         >
                           <Eye className="h-4 w-4 mr-1" />
                           View Details
                         </Button>
-                        <Button 
-                          size="sm"
-                          onClick={() => {
-                            updateOrderStatus(labOrders.find(o => o.orderId === result.orderId)?.id || '', "Completed");
-                            alert(`Results sent to doctor for order ${result.orderId}`);
-                          }}
-                        >
-                          <Send className="h-4 w-4 mr-1" />
-                          Send to Doctor
-                        </Button>
+                        {result.validationStatus === "Pending" ? (
+                          <Button 
+                            size="sm"
+                            onClick={() => validateResult(result.orderId, result.testId)}
+                            className="hover:bg-indigo-600"
+                          >
+                            <CheckCircle2 className="h-4 w-4 mr-1" />
+                            Validate
+                          </Button>
+                        ) : (
+                          <>
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => generatePDFReport(result)}
+                            >
+                              <Download className="h-4 w-4 mr-1" />
+                              Download PDF
+                            </Button>
+                            <Button 
+                              size="sm"
+                              onClick={() => sendResult(result)}
+                              className="hover:bg-green-600"
+                            >
+                              <Send className="h-4 w-4 mr-1" />
+                              Send to Doctor
+                            </Button>
+                          </>
+                        )}
                       </div>
                     </div>
                   </CardContent>

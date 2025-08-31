@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Thermometer, Heart, Activity, Wind, Ruler, Weight, Droplets } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -11,46 +11,111 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 
 // Dummy helpers (replace or import your real ones)
 const getStatusColor = (status: string) => {
   switch (status) {
     case "high":
-      return "bg-red-100 text-red-700";
+      return "bg-red-100 text-red-700 border-red-200";
     case "normal":
-      return "bg-green-100 text-green-700";
+      return "bg-green-100 text-green-700 border-green-200";
     case "low":
-      return "bg-yellow-100 text-yellow-700";
+      return "bg-yellow-100 text-yellow-700 border-yellow-200";
+    case "critical":
+      return "bg-red-200 text-red-800 border-red-300";
     default:
-      return "bg-gray-100 text-gray-700";
+      return "bg-gray-100 text-gray-700 border-gray-200";
   }
 };
-const getVitalStatus = (type: string, value: string) => {
-  // simple dummy logic, replace with your real logic
-  if (type === "bloodPressure") {
-    // e.g. parse and compare systolic/diastolic here
-    if (value === "140/90") return "high";
-    return "normal";
+
+const getVitalStatus = (type: string, value: string): 'normal' | 'high' | 'low' | 'critical' => {
+  if (!value || value === '') return 'normal';
+  
+  const numValue = parseFloat(value);
+  
+  switch (type) {
+    case "bloodPressureSystolic":
+      if (numValue >= 180) return 'critical';
+      if (numValue >= 140) return 'high';
+      if (numValue < 90) return 'low';
+      return 'normal';
+    case "bloodPressureDiastolic":
+      if (numValue >= 120) return 'critical';
+      if (numValue >= 90) return 'high';
+      if (numValue < 60) return 'low';
+      return 'normal';
+    case "temperature":
+      if (numValue >= 39) return 'critical';
+      if (numValue >= 38) return 'high';
+      if (numValue < 36) return 'low';
+      return 'normal';
+    case "pulse":
+      if (numValue >= 120) return 'critical';
+      if (numValue >= 100) return 'high';
+      if (numValue < 60) return 'low';
+      return 'normal';
+    case "respiratoryRate":
+      if (numValue >= 30) return 'critical';
+      if (numValue >= 20) return 'high';
+      if (numValue < 12) return 'low';
+      return 'normal';
+    case "oxygenSaturation":
+      if (numValue < 90) return 'critical';
+      if (numValue < 95) return 'low';
+      return 'normal';
+    case "fbs":
+      if (numValue >= 400) return 'critical';
+      if (numValue >= 126) return 'high';
+      if (numValue < 70) return 'low';
+      return 'normal';
+    case "rbs":
+      if (numValue >= 400) return 'critical';
+      if (numValue >= 200) return 'high';
+      if (numValue < 70) return 'low';
+      return 'normal';
+    case "painScale":
+      if (numValue >= 8) return 'critical';
+      if (numValue >= 5) return 'high';
+      return 'normal';
+    default:
+      return 'normal';
   }
-  if (type === "temperature") {
-    if (parseFloat(value) > 37) return "high";
-    return "normal";
-  }
-  if (type === "pulse") {
-    if (parseInt(value) > 100) return "high";
-    return "normal";
-  }
-  if (type === "oxygenSaturation") {
-    if (parseInt(value) < 95) return "low";
-    return "normal";
-  }
-  return "normal";
 };
+
 const getStatusIcon = (status: string) => {
-  if (status === "high") return <AlertTriangle className="text-red-500" />;
-  if (status === "low") return <AlertTriangle className="text-yellow-500" />;
+  if (status === "critical") return <AlertTriangle className="h-4 w-4 text-red-600" />;
+  if (status === "high") return <AlertTriangle className="h-4 w-4 text-orange-500" />;
+  if (status === "low") return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
   return null;
 };
+
+const getBMICategory = (bmi: number): string => {
+  if (bmi < 18.5) return 'Underweight';
+  if (bmi < 25) return 'Normal weight';
+  if (bmi < 30) return 'Overweight';
+  return 'Obese';
+};
+
+// VitalsData interface - matches the VitalsForm
+interface VitalsData {
+  id?: string;
+  height: string;
+  weight: string;
+  temperature: string;
+  pulse: string;
+  respiratoryRate: string;
+  bloodPressureSystolic: string;
+  bloodPressureDiastolic: string;
+  oxygenSaturation: string;
+  fbs: string;
+  rbs: string;
+  painScale: string;
+  bodymassindex: string;
+  comment?: string;
+  recordedAt?: string;
+  recordedBy?: string;
+}
 
 interface VitalRecord {
   id: string;
@@ -58,14 +123,7 @@ interface VitalRecord {
   personalNumber: string;
   date: string;
   time: string;
-  bloodPressure: string;
-  temperature: string;
-  pulse: string;
-  respiratoryRate: string;
-  oxygenSaturation: string;
-  height: string; 
-  weight: string;
-  rbsFbs: string;
+  vitals: VitalsData;
   recordedBy: string;
   alerts: string[];
 }
@@ -79,33 +137,133 @@ interface ViewVitalsModalProps {
 export function ViewVitalsModal({ record, open, onClose }: ViewVitalsModalProps) {
   if (!record) return null;
 
+  const { vitals } = record;
+  const bmi = parseFloat(vitals.bodymassindex) || null;
+
+  // Vital signs configuration - matches VitalsForm
+  const vitalSigns = [
+    {
+      id: 'temperature',
+      label: 'Temperature',
+      unit: '°C',
+      icon: <Thermometer className="h-4 w-4" />,
+      value: vitals.temperature,
+      status: getVitalStatus('temperature', vitals.temperature)
+    },
+    {
+      id: 'bloodPressureSystolic',
+      label: 'Systolic BP',
+      unit: 'mmHg',
+      icon: <Heart className="h-4 w-4" />,
+      value: vitals.bloodPressureSystolic,
+      status: getVitalStatus('bloodPressureSystolic', vitals.bloodPressureSystolic)
+    },
+    {
+      id: 'bloodPressureDiastolic',
+      label: 'Diastolic BP',
+      unit: 'mmHg',
+      icon: <Heart className="h-4 w-4" />,
+      value: vitals.bloodPressureDiastolic,
+      status: getVitalStatus('bloodPressureDiastolic', vitals.bloodPressureDiastolic)
+    },
+    {
+      id: 'pulse',
+      label: 'Pulse',
+      unit: 'bpm',
+      icon: <Activity className="h-4 w-4" />,
+      value: vitals.pulse,
+      status: getVitalStatus('pulse', vitals.pulse)
+    },
+    {
+      id: 'respiratoryRate',
+      label: 'Respiratory Rate',
+      unit: '/min',
+      icon: <Wind className="h-4 w-4" />,
+      value: vitals.respiratoryRate,
+      status: getVitalStatus('respiratoryRate', vitals.respiratoryRate)
+    },
+    {
+      id: 'oxygenSaturation',
+      label: 'Oxygen Saturation',
+      unit: '%',
+      icon: <Droplets className="h-4 w-4" />,
+      value: vitals.oxygenSaturation,
+      status: getVitalStatus('oxygenSaturation', vitals.oxygenSaturation)
+    },
+    {
+      id: 'height',
+      label: 'Height',
+      unit: 'cm',
+      icon: <Ruler className="h-4 w-4" />,
+      value: vitals.height,
+      status: 'normal' as const
+    },
+    {
+      id: 'weight',
+      label: 'Weight',
+      unit: 'kg',
+      icon: <Weight className="h-4 w-4" />,
+      value: vitals.weight,
+      status: 'normal' as const
+    },
+    {
+      id: 'fbs',
+      label: 'FBS',
+      unit: 'mg/dL',
+      icon: <Droplets className="h-4 w-4" />,
+      value: vitals.fbs,
+      status: getVitalStatus('fbs', vitals.fbs)
+    },
+    {
+      id: 'rbs',
+      label: 'RBS',
+      unit: 'mg/dL',
+      icon: <Droplets className="h-4 w-4" />,
+      value: vitals.rbs,
+      status: getVitalStatus('rbs', vitals.rbs)
+    },
+    {
+      id: 'painScale',
+      label: 'Pain Scale',
+      unit: '/10',
+      icon: <AlertTriangle className="h-4 w-4" />,
+      value: vitals.painScale,
+      status: getVitalStatus('painScale', vitals.painScale)
+    },
+  ];
+
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl">
+      <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Vital Records for {record.patientName}</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            <Thermometer className="h-5 w-5" />
+            Vital Records for {record.patientName}
+          </DialogTitle>
           <DialogClose />
         </DialogHeader>
 
-        <div className="space-y-4 mt-4">
-          <div className="flex items-center justify-between">
+        <div className="space-y-6 mt-4">
+          {/* Patient Info Header */}
+          <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
             <div>
-              <p className="font-semibold text-lg">{record.patientName}</p>
-              <p className="text-sm text-gray-500">
-                {record.personalNumber} • {new Date(record.date).toLocaleDateString()} at {record.time}
+              <p className="font-semibold text-lg text-gray-900">{record.patientName}</p>
+              <p className="text-sm text-gray-600">
+                Personal Number: {record.personalNumber}
               </p>
-              <p className="text-xs text-gray-400">Recorded by {record.recordedBy}</p>
+              <p className="text-sm text-gray-600">
+                Date: {new Date(record.date).toLocaleDateString()} at {record.time}
+              </p>
+              <p className="text-xs text-gray-500">Recorded by: {record.recordedBy}</p>
             </div>
 
             {record.alerts.length > 0 && (
-              <div className="flex items-center space-x-2">
-                <AlertTriangle className="h-5 w-5 text-red-500" />
+              <div className="flex items-start space-x-2">
+                <AlertTriangle className="h-5 w-5 text-red-500 mt-1" />
                 <div className="text-right">
-                  {record.alerts.map((alert, index) => (
-                    <span
-                      key={index}
-                      className="block text-xs text-red-600 bg-red-50 px-2 py-1 rounded mb-1"
-                    >
+                  <div className="text-sm font-medium text-red-700 mb-1">Health Alerts:</div>
+                  {record.alerts.map((alert: string, index: number) => (
+                    <span key={index} className="block text-xs text-red-600 bg-red-100 px-2 py-1 rounded mb-1">
                       {alert}
                     </span>
                   ))}
@@ -114,66 +272,60 @@ export function ViewVitalsModal({ record, open, onClose }: ViewVitalsModalProps)
             )}
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
-            <div className={`p-3 rounded-lg ${getStatusColor(getVitalStatus("bloodPressure", record.bloodPressure))}`}>
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs font-medium">Blood Pressure</span>
-                {getStatusIcon(getVitalStatus("bloodPressure", record.bloodPressure))}
+          {/* Vital Signs Grid */}
+          <div className="space-y-4">
+            <h4 className="text-md font-semibold text-gray-800">Vital Signs</h4>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              {vitalSigns.map((vital) => (
+                <div 
+                  key={vital.id} 
+                  className={`p-4 rounded-lg border ${getStatusColor(vital.status)}`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <Label className="flex items-center gap-2 text-sm font-medium">
+                      {vital.icon}
+                      {vital.label}
+                    </Label>
+                    {getStatusIcon(vital.status)}
+                  </div>
+                  <p className="text-lg font-semibold">
+                    {vital.value || "Not recorded"}
+                  </p>
+                  <p className="text-xs opacity-75">{vital.unit}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* BMI Display */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2 text-sm font-medium">
+                <Weight className="h-4 w-4" />
+                Body Mass Index (kg/m²)
+              </Label>
+              <div className="p-4 rounded-lg border bg-gray-50">
+                <p className="text-lg font-semibold text-gray-900">
+                  {vitals.bodymassindex || "Not calculated"}
+                </p>
+                {bmi && (
+                  <p className="text-sm text-gray-500">
+                    Category: {getBMICategory(bmi)}
+                  </p>
+                )}
               </div>
-              <p className="font-semibold">{record.bloodPressure}</p>
-              <p className="text-xs opacity-75">mmHg</p>
             </div>
 
-            <div className={`p-3 rounded-lg ${getStatusColor(getVitalStatus("temperature", record.temperature))}`}>
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs font-medium">Temperature</span>
-                {getStatusIcon(getVitalStatus("temperature", record.temperature))}
+            {/* Comments section */}
+            {vitals.comment && (
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Additional Comments</Label>
+                <div className="p-4 border rounded-lg bg-blue-50">
+                  <p className="text-sm text-gray-800 whitespace-pre-wrap">
+                    {vitals.comment}
+                  </p>
+                </div>
               </div>
-              <p className="font-semibold">{record.temperature}</p>
-              <p className="text-xs opacity-75">°C</p>
-            </div>
-
-            <div className={`p-3 rounded-lg ${getStatusColor(getVitalStatus("pulse", record.pulse))}`}>
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs font-medium">Pulse</span>
-                {getStatusIcon(getVitalStatus("pulse", record.pulse))}
-              </div>
-              <p className="font-semibold">{record.pulse}</p>
-              <p className="text-xs opacity-75">bpm</p>
-            </div>
-
-            <div className="p-3 rounded-lg bg-gray-50">
-              <span className="text-xs font-medium text-gray-600">Respiratory Rate</span>
-              <p className="font-semibold text-gray-900">{record.respiratoryRate}</p>
-              <p className="text-xs text-gray-500">/min</p>
-            </div>
-
-            <div className={`p-3 rounded-lg ${getStatusColor(getVitalStatus("oxygenSaturation", record.oxygenSaturation))}`}>
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs font-medium">O2 Sat</span>
-                {getStatusIcon(getVitalStatus("oxygenSaturation", record.oxygenSaturation))}
-              </div>
-              <p className="font-semibold">{record.oxygenSaturation}</p>
-              <p className="text-xs opacity-75">%</p>
-            </div>
-
-            <div className="p-3 rounded-lg bg-gray-50">
-              <span className="text-xs font-medium text-gray-600">Height</span>
-              <p className="font-semibold text-gray-900">{record.height}</p>
-              <p className="text-xs text-gray-500">cm</p>
-            </div>
-
-            <div className="p-3 rounded-lg bg-gray-50">
-              <span className="text-xs font-medium text-gray-600">Weight</span>
-              <p className="font-semibold text-gray-900">{record.weight}</p>
-              <p className="text-xs text-gray-500">kg</p>
-            </div>
-
-            <div className="p-3 rounded-lg bg-gray-50">
-              <span className="text-xs font-medium text-gray-600">RBS/FBS</span>
-              <p className="font-semibold text-gray-900">{record.rbsFbs}</p>
-              <p className="text-xs text-gray-500">mg/dL</p>
-            </div>
+            )}
           </div>
         </div>
 

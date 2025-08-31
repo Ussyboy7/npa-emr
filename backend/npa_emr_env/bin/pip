@@ -1,4 +1,4 @@
-#!/Users/umyaro/Documents/Projects/npa_emr/backend/npa_emr_env/bin/python3.11
+#!/Users/umyaro/Documents/Projects/npa-emr/backend/npa_emr_env/bin/python
 # -*- coding: utf-8 -*-
 import re
 import sys
