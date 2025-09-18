@@ -1,23 +1,14 @@
 "use client";
-
 import React from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { 
-  Building2, 
-  Users, 
-  UserCheck, 
-  Clock, 
-  CheckCircle, 
-  XCircle,
-  AlertCircle 
-} from "lucide-react";
+import { Building2, Users, UserCheck, Clock, CheckCircle, XCircle, AlertCircle } from "lucide-react";
 
 interface Room {
   id: string;
   name: string;
-  status: "available" | "occupied" | "maintenance" | "reserved";
+  status: "available" | "occupied" ;
   currentPatient?: string;
   estimatedTime?: string;
   doctor?: string;
@@ -47,10 +38,6 @@ const ConsultationRoomPicker: React.FC<Props> = ({
       case "available":
         return "bg-green-100 text-green-800 border-green-200";
       case "occupied":
-        return "bg-red-100 text-red-800 border-red-200";
-      case "maintenance":
-        return "bg-orange-100 text-orange-800 border-orange-200";
-      case "reserved":
         return "bg-blue-100 text-blue-800 border-blue-200";
       default:
         return "bg-gray-100 text-gray-800 border-gray-200";
@@ -63,10 +50,6 @@ const ConsultationRoomPicker: React.FC<Props> = ({
         return <CheckCircle className="h-4 w-4 text-green-600" />;
       case "occupied":
         return <Users className="h-4 w-4 text-red-600" />;
-      case "maintenance":
-        return <AlertCircle className="h-4 w-4 text-orange-600" />;
-      case "reserved":
-        return <Clock className="h-4 w-4 text-blue-600" />;
       default:
         return <Building2 className="h-4 w-4 text-gray-600" />;
     }
@@ -78,10 +61,6 @@ const ConsultationRoomPicker: React.FC<Props> = ({
         return "Available";
       case "occupied":
         return "Occupied";
-      case "maintenance":
-        return "Maintenance";
-      case "reserved":
-        return "Reserved";
       default:
         return "Unknown";
     }
@@ -92,7 +71,7 @@ const ConsultationRoomPicker: React.FC<Props> = ({
   const otherRooms = rooms.filter(room => !["available", "occupied"].includes(room.status));
 
   return (
-    <div className="p-6 space-y-6 max-h-[80vh] overflow-y-auto">
+    <div className="max-w-8xl max-h-[80vh] overflow-y-auto">
       {/* Header */}
       <div className="text-center space-y-2">
         <h2 className="text-xl font-semibold text-gray-900">{title}</h2>
@@ -202,7 +181,7 @@ const ConsultationRoomPicker: React.FC<Props> = ({
         </div>
       )}
 
-      {/* Other Rooms (Maintenance, Reserved, etc.) */}
+      {/* Other Rooms (Reserved, etc.) */}
       {otherRooms.length > 0 && (
         <div className="space-y-3">
           <h3 className="text-sm font-medium text-gray-700 flex items-center gap-2">

@@ -675,110 +675,13 @@ export default function EnhancedReportsDashboard() {
         <div>
           <div className="flex items-center gap-3 mb-2">
             <h1 className="text-3xl font-bold tracking-tight">Reports Dashboard</h1>
-            <Badge className={systemMetrics.networkStatus ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}>
-              <div className="flex items-center gap-1">
-                {systemMetrics.networkStatus ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
-                {systemMetrics.networkStatus ? "Online" : "Offline"}
-              </div>
-            </Badge>
           </div>
           <p className="text-muted-foreground">
             Generate and manage comprehensive medical facility reports with integrated data validation and compliance monitoring
           </p>
         </div>
 
-        {/* System Health Panel */}
-        <Card className="w-full lg:w-96">
-          <CardHeader 
-            className="pb-2 cursor-pointer" 
-            onClick={() => setShowSystemHealth(!showSystemHealth)}
-          >
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Monitor className="h-5 w-5" />
-                System Health
-              </CardTitle>
-              {showSystemHealth ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-            </div>
-          </CardHeader>
-          {showSystemHealth && (
-            <CardContent className="space-y-3">
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <div className="text-2xl font-bold text-blue-600">{reportStats.completed}</div>
-                  <div className="text-xs text-muted-foreground">Completed Today</div>
-                </div>
-                <div>
-                  <div className="text-2xl font-bold text-orange-600">{systemMetrics.activeReports}</div>
-                  <div className="text-xs text-muted-foreground">Currently Active</div>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span>CPU Usage</span>
-                  <span>{systemMetrics.cpuUsage}%</span>
-                </div>
-                <Progress value={systemMetrics.cpuUsage} className="h-2" />
-                <div className="flex items-center justify-between text-sm">
-                  <span>Memory</span>
-                  <span>{systemMetrics.memoryUsage}%</span>
-                </div>
-                <Progress value={systemMetrics.memoryUsage} className="h-2" />
-              </div>
-            </CardContent>
-          )}
-        </Card>
       </div>
-
-      {/* Data Sources Status */}
-      <Card>
-        <CardHeader 
-          className="cursor-pointer" 
-          onClick={() => setShowDataSources(!showDataSources)}
-        >
-          <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2">
-              <Database className="h-5 w-5" />
-              Data Sources Integration Status
-            </CardTitle>
-            {showDataSources ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-          </div>
-        </CardHeader>
-        {showDataSources && (
-          <CardContent>
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-              {dataSources.map((source) => {
-                const statusInfo = getDataSourceStatus(source.status);
-                return (
-                  <div key={source.id} className="border rounded-lg p-4">
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        {getDataSourceIcon(source.type)}
-                        <h4 className="font-medium text-sm">{source.name}</h4>
-                      </div>
-                      <div className={`flex items-center gap-1 ${statusInfo.color}`}>
-                        {statusInfo.icon}
-                        <span className="text-xs capitalize">{source.status}</span>
-                      </div>
-                    </div>
-                    <div className="text-xs text-muted-foreground space-y-1">
-                      {source.lastSync && (
-                        <div>Last sync: {new Date(source.lastSync).toLocaleTimeString()}</div>
-                      )}
-                      {source.recordCount && (
-                        <div>Records: {source.recordCount.toLocaleString()}</div>
-                      )}
-                      {source.version && (
-                        <div>Version: {source.version}</div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </CardContent>
-        )}
-      </Card>
 
       <Tabs defaultValue="generate" className="space-y-6">
         <TabsList className="grid w-full grid-cols-4">

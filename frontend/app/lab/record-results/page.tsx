@@ -1,164 +1,211 @@
-// lab/record-results/page.tsx
+"use client";
+import React, { useState, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { FlaskConical, FileText, Upload, Save } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Select, SelectItem, SelectTrigger, SelectValue, SelectContent } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Search, TestTube, Clock, User, Calendar, Beaker } from "lucide-react";
+import { SampleCollectionModal } from "@/components/lab/samplecollectionmodal";
+import { LabOrder, Priority, Status } from "@/types/lab"; // Import types
 
-const RecordResults = () => {
+// Mock data (replace with API)
+const labOrdersMock: LabOrder[] = [
+  // ... (from original code)
+];
+
+const LabOrdersPage = () => {
+  const [searchTerm, setSearchTerm] = useState("");
+  const [priorityFilter, setPriorityFilter] = useState<Priority | "All">("All");
+  const [dateFilter, setDateFilter] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [selectedOrder, setSelectedOrder] = useState<LabOrder | null>(null);
+  const [showCollectionModal, setShowCollectionModal] = useState(false);
+  const [selectedTestsForCollection, setSelectedTestsForCollection] = useState<string[]>([]);
+
+  const itemsPerPage = 5;
+  const [labOrders, setLabOrders] = useState<LabOrder[]>(labOrdersMock);
+
+  // Filter pending orders
+  const filteredOrders = useMemo(() => {
+    return labOrders
+      .filter(order => order.status === "Pending")
+      .filter(order => {
+        const matchesSearch = order.patientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          order.orderId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          order.doctorName.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesPriority = priorityFilter === "All" || order.priority === priorityFilter;
+        const matchesDate = !dateFilter || order.orderDate === dateFilter;
+        return matchesSearch && matchesPriority && matchesDate;
+      });
+  }, [labOrders, searchTerm, priorityFilter, dateFilter]);
+
+  const totalPages = Math.ceil(filteredOrders.length / itemsPerPage);
+  const paginatedOrders = filteredOrders.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+
+  const stats = useMemo(() => ({
+    total: filteredOrders.length,
+    stat: filteredOrders.filter(o => o.priority === "STAT").length,
+    urgent: filteredOrders.filter(o => o.priority === "Urgent").length,
+    routine: filteredOrders.filter(o => o.priority === "Routine").length,
+  }), [filteredOrders]);
+
+  // Handle collection start
+  const startCollection = (order: LabOrder, selectedTests: string[]) => {
+    setSelectedOrder(order);
+    setSelectedTestsForCollection(selectedTests);
+    setShowCollectionModal(true);
+  };
+
+  // Update order status after collection
+  const onCollectionComplete = (orderId: string) => {
+    setLabOrders(prev => prev.map(o => 
+      o.id === orderId ? { ...o, status: "Collected" as Status } : o
+    ));
+  };
+
+  // Utility functions
+  const getPriorityColor = (priority: Priority) => {
+    switch (priority) {
+      case "STAT": return "bg-red-100 text-red-800 border-red-200";
+      case "Urgent": return "bg-orange-100 text-orange-800 border-orange-200";
+      case "Routine": return "bg-blue-100 text-blue-800 border-blue-200";
+      default: return "bg-gray-100 text-gray-800 border-gray-200";
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'short', 
+      day: '2-digit' 
+    });
+  };
+
   return (
-    <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
-      <div className="flex items-center justify-between space-y-2">
-        <h2 className="text-3xl font-bold tracking-tight">Record Lab Results</h2>
-      </div>
-      
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Tests Today</CardTitle>
-            <FlaskConical className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">28</div>
-            <p className="text-xs text-muted-foreground">Completed</p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Results Pending</CardTitle>
-            <FileText className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">12</div>
-            <p className="text-xs text-muted-foreground">Awaiting entry</p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Abnormal Results</CardTitle>
-            <Upload className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">3</div>
-            <p className="text-xs text-muted-foreground">Require attention</p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Verified</CardTitle>
-            <Save className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">25</div>
-            <p className="text-xs text-muted-foreground">Ready for release</p>
-          </CardContent>
-        </Card>
+    <div className="max-w-7xl mx-auto p-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-3xl font-bold">Lab Orders (Pending)</h1>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Record Test Results</CardTitle>
-          <CardDescription>Enter laboratory test results for patient</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <Label htmlFor="patient-search">Patient</Label>
-              <Input id="patient-search" placeholder="Search patient by name or ID..." />
-            </div>
-            <div>
-              <Label htmlFor="test-id">Test ID</Label>
-              <Input id="test-id" placeholder="Enter test identifier..." />
-            </div>
-          </div>
-          
-          <div className="grid gap-4 md:grid-cols-3">
-            <div>
-              <Label htmlFor="test-type">Test Type</Label>
-              <Select>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select test type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="blood">Blood Test</SelectItem>
-                  <SelectItem value="urine">Urine Analysis</SelectItem>
-                  <SelectItem value="cholesterol">Cholesterol Panel</SelectItem>
-                  <SelectItem value="liver">Liver Function</SelectItem>
-                  <SelectItem value="kidney">Kidney Function</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label htmlFor="sample-date">Sample Date</Label>
-              <Input id="sample-date" type="date" />
-            </div>
-            <div>
-              <Label htmlFor="technician">Technician</Label>
-              <Select>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select technician" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="tech1">Lab Tech 1</SelectItem>
-                  <SelectItem value="tech2">Lab Tech 2</SelectItem>
-                  <SelectItem value="tech3">Lab Tech 3</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          
-          <div>
-            <Label htmlFor="results">Test Results</Label>
-            <Textarea 
-              id="results" 
-              placeholder="Enter detailed test results, values, and measurements..."
-              rows={6}
-            />
-          </div>
-          
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <Label htmlFor="reference-range">Reference Range</Label>
-              <Input id="reference-range" placeholder="Normal range for this test..." />
-            </div>
-            <div>
-              <Label htmlFor="status">Result Status</Label>
-              <Select>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="normal">Normal</SelectItem>
-                  <SelectItem value="abnormal">Abnormal</SelectItem>
-                  <SelectItem value="critical">Critical</SelectItem>
-                  <SelectItem value="pending">Pending Review</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          
-          <div>
-            <Label htmlFor="notes">Additional Notes</Label>
-            <Textarea 
-              id="notes" 
-              placeholder="Any additional observations or notes..."
-              rows={3}
-            />
-          </div>
-          
-          <div className="flex space-x-2">
-            <Button className="flex-1">Save Results</Button>
-            <Button variant="outline" className="flex-1">Save & Verify</Button>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">Total Pending</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold">{stats.total}</p>
+          </CardContent>
+        </Card>
+        {/* Add other stats cards similarly */}
+      </div>
+
+      {/* Search & Filter */}
+      <div className="space-y-4 p-4 border rounded">
+        <h2 className="font-semibold">Search & Filter</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Input
+            placeholder="Search patient, order, doctor..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+          <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+            <SelectTrigger>
+              <SelectValue placeholder="Priority" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="All">All</SelectItem>
+              <SelectItem value="STAT">STAT</SelectItem>
+              <SelectItem value="Urgent">Urgent</SelectItem>
+              <SelectItem value="Routine">Routine</SelectItem>
+            </SelectContent>
+          </Select>
+          <Input type="date" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} />
+        </div>
+      </div>
+
+      {/* Orders List */}
+      <div className="space-y-4">
+        {paginatedOrders.map((order) => (
+          <Card key={order.id}>
+            <CardHeader>
+              <div className="flex justify-between items-start">
+                <div>
+                  <CardTitle>{order.patientName}</CardTitle>
+                  <CardDescription>Order {order.orderId} - {order.doctorName}</CardDescription>
+                </div>
+                <Badge className={getPriorityColor(order.priority)}>{order.priority}</Badge>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                <p><strong>Tests:</strong> {order.tests.map(t => t.name).join(', ')}</p>
+                <p><strong>Date:</strong> {formatDate(order.orderDate)} {order.orderTime}</p>
+                <p><strong>Notes:</strong> {order.clinicalNotes}</p>
+              </div>
+              <div className="mt-4 flex gap-2 flex-wrap">
+                <div className="flex gap-2 flex-wrap">
+                  {order.tests.map(test => (
+                    <Checkbox
+                      key={test.id}
+                      checked={selectedTestsForCollection.includes(test.id)}
+                      onCheckedChange={(checked) => {
+                        setSelectedTestsForCollection(prev => 
+                          checked ? [...prev, test.id] : prev.filter(id => id !== test.id)
+                        );
+                      }}
+                    >
+                      {test.name}
+                    </Checkbox>
+                  ))}
+                </div>
+                <Button onClick={() => startCollection(order, selectedTestsForCollection)}>
+                  Collect Sample
+                </Button>
+                <Button variant="outline" onClick={() => alert(`View details for ${order.orderId}`)}>
+                  View Details
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Pagination */}
+      <div className="flex justify-center items-center gap-4">
+        <Button
+          variant="outline"
+          onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+          disabled={currentPage === 1}
+        >
+          Previous
+        </Button>
+        <span>Page {currentPage} of {totalPages}</span>
+        <Button
+          variant="outline"
+          onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+          disabled={currentPage === totalPages}
+        >
+          Next
+        </Button>
+      </div>
+
+      <SampleCollectionModal
+        isOpen={showCollectionModal}
+        onClose={() => setShowCollectionModal(false)}
+        order={selectedOrder}
+        selectedTests={selectedTestsForCollection}
+        onComplete={onCollectionComplete}
+      />
     </div>
   );
 };
 
-export default RecordResults;
+export default LabOrdersPage;

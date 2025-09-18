@@ -1,1644 +1,936 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectItem, SelectTrigger, SelectValue, SelectContent } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Search, Eye, Clock, Users, Pill, ArrowRight, UserCheck, X, Activity, AlertTriangle, Shield, Package, CheckCircle, AlertCircle, Stethoscope, RefreshCw, Plus } from "lucide-react";
+import {
+  Select,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+} from "@/components/ui/select";
+import {
+  Search,
+  Eye,
+  Edit,
+  Send,
+  Clock,
+  Calendar,
+  CheckCircle,
+  X,
+  Filter,
+  User,
+} from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { useRouter } from "next/navigation";
+import { useToast } from "@/lib/toast";
+import EditVisitModal from "@/components/medical-records/editvisitmodal";
+import PatientOverviewModalContent from "@/components/medical-records/patientoverviewmodal";
 
-type Priority = "High" | "Medium" | "Normal";
-type PharmacyStatus = "Pending" | "Processing" | "Ready" | "Partially Dispensed" | "Dispensed" | "On Hold";
-type PrescriptionStatus = "Pending" | "Available" | "Out of Stock" | "Dispensed" | "Substituted";
-
-interface PrescriptionItem {
-  id: string;
-  medication: string;
-  strength: string;
-  dosage: string;
-  frequency: string;
-  duration: string;
-  quantity: number;
-  instructions: string;
-  genericAvailable: boolean;
-  inStock: boolean;
-  stockLevel?: number;
-  status: PrescriptionStatus;
-  substitutedWith?: {
-    medication: string;
-    strength: string;
-    reason: string;
-    approvedBy: string;
-  };
-  dispensedQuantity?: number;
-  dispensedDate?: string;
-  dispensedBy?: string;
-  selectedForDispensing?: boolean;
-  partialQuantity?: number;
-}
-
-interface PharmacyQueueItem {
-  id: string;
-  patientId: string;
-  patientName: string;
-  priority: Priority;
-  waitTime: string;
-  prescribedBy: string;
-  assignedTo: string;
-  status: PharmacyStatus;
-  orderTime: string;
-  orderDate: string;
-  estimatedCompletionTime: string;
-  age: number;
-  gender: string;
-  phoneNumber: string;
-  employeeCategory: string;
-  location?: string;
-  prescriptions: PrescriptionItem[];
-  allergies: string[];
-  specialInstructions?: string;
-  consultationRoom?: string;
-  sentFromConsultation?: boolean;
-  pharmacistNotes?: string;
-  lastDispensedDate?: string;
-}
-
-interface PrescriptionHistory {
-  dispensedMedications: DispensedMedication[];
-  interactions: DrugInteraction[];
-  adherenceRecords: AdherenceRecord[];
-}
-
-interface DispensedMedication {
-  id: string;
-  medication: string;
-  strength: string;
-  quantity: number;
-  dispensedDate: string;
-  dispensedBy: string;
-  prescribedBy: string;
-  refillsRemaining: number;
-  nextRefillDate?: string;
-  adherenceScore?: number;
-}
-
-interface DrugInteraction {
-  id: string;
-  drug1: string;
-  drug2: string;
-  interactionType: "Major" | "Moderate" | "Minor";
+interface Toast {
+  title: string;
   description: string;
-  recommendation: string;
-  dateIdentified: string;
+  variant?: "default" | "destructive" | "success";
 }
 
-interface AdherenceRecord {
+type VisitStatus = "Scheduled" | "Confirmed" | "In Progress" | "Completed" | "Cancelled" | "Rescheduled";
+
+interface Visit {
   id: string;
-  medication: string;
-  period: string;
-  adherencePercentage: number;
-  missedDoses: number;
-  notes?: string;
+  patient: string; // patient ID
+  patient_name: string;
+  personal_number: string;
+  clinic: string;
+  visit_time: string;
+  visit_date: string;
+  visit_type: string;
+  visit_location: string;
+  priority: "Low" | "Medium" | "High" | "Emergency";
+  status: VisitStatus;
+  special_instructions?: string;
+  created_at: string;
+  updated_at: string;
 }
 
-// Mock pharmacy queue data
-const pharmacyQueueMock: PharmacyQueueItem[] = [
-  {
-    id: "RX001",
-    patientId: "P001",
-    patientName: "John Doe",
-    priority: "High",
-    waitTime: "35 min",
-    prescribedBy: "Dr. Smith",
-    assignedTo: "Pharm. Johnson",
-    status: "Processing",
-    orderTime: "08:30 AM",
-    orderDate: "2025-08-15",
-    estimatedCompletionTime: "09:15 AM",
-    age: 45,
-    gender: "Male",
-    phoneNumber: "123-456-7890",
-    employeeCategory: "Employee",
-    location: "Headquarters",
-    allergies: ["Penicillin", "Sulfa"],
-    prescriptions: [
-      {
-        id: "PRES001",
-        medication: "Amoxicillin",
-        strength: "500mg",
-        dosage: "1 tablet",
-        frequency: "Three times daily",
-        duration: "7 days",
-        quantity: 21,
-        instructions: "Take with food",
-        genericAvailable: true,
-        inStock: true,
-        stockLevel: 150,
-        status: "Available",
-        selectedForDispensing: false
-      },
-      {
-        id: "PRES002",
-        medication: "Paracetamol",
-        strength: "500mg",
-        dosage: "1-2 tablets",
-        frequency: "Every 4-6 hours as needed",
-        duration: "As needed",
-        quantity: 30,
-        instructions: "Do not exceed 8 tablets in 24 hours",
-        genericAvailable: true,
-        inStock: true,
-        stockLevel: 200,
-        status: "Available",
-        selectedForDispensing: false
-      },
-      {
-        id: "PRES003",
-        medication: "Cough Syrup",
-        strength: "100ml",
-        dosage: "10ml",
-        frequency: "Three times daily",
-        duration: "5 days",
-        quantity: 1,
-        instructions: "Shake well before use",
-        genericAvailable: false,
-        inStock: false,
-        stockLevel: 0,
-        status: "Out of Stock",
-        selectedForDispensing: false
-      }
-    ],
-    consultationRoom: "Room 1",
-    sentFromConsultation: true,
-    specialInstructions: "Patient has difficulty swallowing large tablets"
-  },
-  {
-    id: "RX002",
-    patientId: "P002",
-    patientName: "Jane Smith",
-    priority: "Medium",
-    waitTime: "22 min",
-    prescribedBy: "Dr. Wilson",
-    assignedTo: "Unassigned",
-    status: "Pending",
-    orderTime: "09:15 AM",
-    orderDate: "2025-08-15",
-    estimatedCompletionTime: "09:45 AM",
-    age: 34,
-    gender: "Female",
-    phoneNumber: "987-654-3210",
-    employeeCategory: "Employee",
-    location: "Branch Office",
-    allergies: [],
-    prescriptions: [
-      {
-        id: "PRES004",
-        medication: "Ibuprofen",
-        strength: "400mg",
-        dosage: "1 tablet",
-        frequency: "Three times daily",
-        duration: "5 days",
-        quantity: 15,
-        instructions: "Take with food to prevent stomach upset",
-        genericAvailable: true,
-        inStock: true,
-        stockLevel: 75,
-        status: "Available",
-        selectedForDispensing: false
-      },
-      {
-        id: "PRES005",
-        medication: "Vitamin D3",
-        strength: "1000 IU",
-        dosage: "1 capsule",
-        frequency: "Once daily",
-        duration: "30 days",
-        quantity: 30,
-        instructions: "Take with largest meal of the day",
-        genericAvailable: false,
-        inStock: false,
-        stockLevel: 0,
-        status: "Out of Stock",
-        selectedForDispensing: false
-      }
-    ],
-    sentFromConsultation: true
-  },
-  {
-    id: "RX003",
-    patientId: "P003",
-    patientName: "Robert Johnson",
-    priority: "Normal",
-    waitTime: "15 min",
-    prescribedBy: "Dr. Davis",
-    assignedTo: "Pharm. Williams",
-    status: "Partially Dispensed",
-    orderTime: "10:00 AM",
-    orderDate: "2025-08-15",
-    estimatedCompletionTime: "10:30 AM",
-    age: 58,
-    gender: "Male",
-    phoneNumber: "555-123-4567",
-    employeeCategory: "Retiree",
-    location: "Remote",
-    allergies: ["Aspirin"],
-    prescriptions: [
-      {
-        id: "PRES006",
-        medication: "Lisinopril",
-        strength: "10mg",
-        dosage: "1 tablet",
-        frequency: "Once daily",
-        duration: "30 days",
-        quantity: 30,
-        instructions: "Take at the same time each day",
-        genericAvailable: true,
-        inStock: true,
-        stockLevel: 120,
-        status: "Dispensed",
-        dispensedQuantity: 30,
-        dispensedDate: "2025-08-15",
-        dispensedBy: "Pharm. Williams",
-        selectedForDispensing: false
-      },
-      {
-        id: "PRES007",
-        medication: "Metformin",
-        strength: "500mg",
-        dosage: "1 tablet",
-        frequency: "Twice daily",
-        duration: "30 days",
-        quantity: 60,
-        instructions: "Take with meals",
-        genericAvailable: true,
-        inStock: true,
-        stockLevel: 180,
-        status: "Available",
-        selectedForDispensing: false
-      },
-      {
-        id: "PRES008",
-        medication: "Aspirin",
-        strength: "75mg",
-        dosage: "1 tablet",
-        frequency: "Once daily",
-        duration: "30 days",
-        quantity: 30,
-        instructions: "Take with food",
-        genericAvailable: true,
-        inStock: false,
-        stockLevel: 0,
-        status: "Out of Stock",
-        selectedForDispensing: false
-      }
-    ],
-    lastDispensedDate: "2025-07-15",
-    pharmacistNotes: "Lisinopril dispensed, waiting for Aspirin stock"
-  },
-  {
-    id: "RX004",
-    patientId: "P004",
-    patientName: "Sarah Wilson",
-    priority: "High",
-    waitTime: "8 min",
-    prescribedBy: "Dr. Brown",
-    assignedTo: "Pharm. Johnson",
-    status: "Ready",
-    orderTime: "10:30 AM",
-    orderDate: "2025-08-15",
-    estimatedCompletionTime: "11:00 AM",
-    age: 52,
-    gender: "Female",
-    phoneNumber: "444-987-6543",
-    employeeCategory: "Employee",
-    location: "Headquarters",
-    allergies: ["Codeine", "Latex"],
-    prescriptions: [
-      {
-        id: "PRES009",
-        medication: "Albuterol Inhaler",
-        strength: "90 mcg",
-        dosage: "2 puffs",
-        frequency: "Every 4-6 hours as needed",
-        duration: "As needed",
-        quantity: 1,
-        instructions: "Shake well before use. Rinse mouth after use",
-        genericAvailable: false,
-        inStock: true,
-        stockLevel: 25,
-        status: "Available",
-        selectedForDispensing: false
-      },
-      {
-        id: "PRES010",
-        medication: "Prednisone",
-        strength: "10mg",
-        dosage: "2 tablets",
-        frequency: "Once daily with food",
-        duration: "5 days",
-        quantity: 10,
-        instructions: "Take in the morning. Do not stop abruptly",
-        genericAvailable: true,
-        inStock: true,
-        stockLevel: 100,
-        status: "Available",
-        selectedForDispensing: false
-      }
-    ],
-    consultationRoom: "Room 4",
-    sentFromConsultation: true,
-    specialInstructions: "Patient experiencing acute asthma exacerbation"
-  }
-];
+interface Patient {
+  id: string;
+  personal_number: string;
+  name: string;
+  patient_type: string;
+  gender: string;
+  age: number;
+  phone?: string;
+  email?: string;
+  non_npa_type?: string;
+  photo?: string;
+}
 
-// Enhanced mock prescription history data
-const mockPrescriptionHistory: { [patientId: string]: PrescriptionHistory } = {
-  "P001": {
-    dispensedMedications: [
-      {
-        id: "DISP001",
-        medication: "Lisinopril 10mg",
-        strength: "10mg",
-        quantity: 30,
-        dispensedDate: "2025-07-15",
-        dispensedBy: "Pharm. Johnson",
-        prescribedBy: "Dr. Smith",
-        refillsRemaining: 2,
-        nextRefillDate: "2025-08-15",
-        adherenceScore: 95
-      },
-      {
-        id: "DISP002",
-        medication: "Metformin 500mg",
-        strength: "500mg",
-        quantity: 60,
-        dispensedDate: "2025-07-01",
-        dispensedBy: "Pharm. Williams",
-        prescribedBy: "Dr. Smith",
-        refillsRemaining: 1,
-        adherenceScore: 88
-      }
-    ],
-    interactions: [
-      {
-        id: "INT001",
-        drug1: "Lisinopril",
-        drug2: "Potassium supplements",
-        interactionType: "Moderate",
-        description: "May increase potassium levels",
-        recommendation: "Monitor potassium levels regularly",
-        dateIdentified: "2025-07-15"
-      }
-    ],
-    adherenceRecords: [
-      {
-        id: "ADH001",
-        medication: "Lisinopril",
-        period: "July 2025",
-        adherencePercentage: 95,
-        missedDoses: 2,
-        notes: "Generally compliant, missed weekend doses"
-      }
-    ]
-  },
-  "P002": {
-    dispensedMedications: [
-      {
-        id: "DISP003",
-        medication: "Ibuprofen 400mg",
-        strength: "400mg",
-        quantity: 30,
-        dispensedDate: "2025-07-20",
-        dispensedBy: "Pharm. Johnson",
-        prescribedBy: "Dr. Wilson",
-        refillsRemaining: 0,
-        adherenceScore: 92
-      }
-    ],
-    interactions: [],
-    adherenceRecords: [
-      {
-        id: "ADH002",
-        medication: "Ibuprofen",
-        period: "July 2025",
-        adherencePercentage: 92,
-        missedDoses: 1,
-        notes: "Good compliance"
-      }
-    ]
-  },
-  "P003": {
-    dispensedMedications: [
-      {
-        id: "DISP004",
-        medication: "Lisinopril 10mg",
-        strength: "10mg",
-        quantity: 30,
-        dispensedDate: "2025-08-15",
-        dispensedBy: "Pharm. Williams",
-        prescribedBy: "Dr. Davis",
-        refillsRemaining: 2,
-        adherenceScore: 98
-      }
-    ],
-    interactions: [],
-    adherenceRecords: [
-      {
-        id: "ADH003",
-        medication: "Lisinopril",
-        period: "August 2025",
-        adherencePercentage: 98,
-        missedDoses: 0,
-        notes: "Excellent compliance"
-      }
-    ]
-  },
-  "P004": {
-    dispensedMedications: [
-      {
-        id: "DISP005",
-        medication: "Albuterol Inhaler",
-        strength: "90 mcg",
-        quantity: 2,
-        dispensedDate: "2025-07-10",
-        dispensedBy: "Pharm. Johnson",
-        prescribedBy: "Dr. Brown",
-        refillsRemaining: 1,
-        adherenceScore: 85
-      }
-    ],
-    interactions: [],
-    adherenceRecords: [
-      {
-        id: "ADH004",
-        medication: "Albuterol Inhaler",
-        period: "July 2025",
-        adherencePercentage: 85,
-        missedDoses: 3,
-        notes: "Patient sometimes forgets inhaler at home"
-      }
-    ]
-  }
-};
+interface APIError {
+  detail?: string;
+  [key: string]: string | string[] | undefined;
+}
+
+const Loader = () => (
+  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-900" />
+);
 
 const formatDate = (dateString: string) => {
   const date = new Date(dateString);
-  return date.toLocaleDateString('en-US', { 
-    year: 'numeric', 
-    month: 'short', 
-    day: '2-digit' 
+  return date.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
   });
 };
 
-export default function PharmacyPoolQueue() {
+const getStatusColor = (status: VisitStatus) => {
+  switch (status) {
+    case "Completed":
+      return "bg-green-100 text-green-800 border-green-200";
+    case "In Progress":
+    case "Confirmed":
+      return "bg-yellow-100 text-yellow-800 border-yellow-200";
+    case "Cancelled":
+      return "bg-red-100 text-red-800 border-red-200";
+    case "Rescheduled":
+      return "bg-purple-100 text-purple-800 border-purple-200";
+    case "Scheduled":
+    default:
+      return "bg-blue-100 text-blue-800 border-blue-200";
+  }
+};
+
+const getPriorityColor = (priority: string) => {
+  switch (priority) {
+    case "Emergency":
+      return "bg-red-500";
+    case "High":
+      return "bg-orange-500";
+    case "Medium":
+      return "bg-yellow-500";
+    case "Low":
+    default:
+      return "bg-green-500";
+  }
+};
+
+export default function ManageVisit() {
+  const router = useRouter();
+  const { toast } = useToast();
+  const [visits, setVisits] = useState<Visit[]>([]);
+  const [patients, setPatients] = useState<Patient[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [priorityFilter, setPriorityFilter] = useState<Priority | "All">("All");
-  const [statusFilter, setStatusFilter] = useState<PharmacyStatus | "All">("All");
+  const [statusFilter, setStatusFilter] = useState<VisitStatus | "All">("All");
+  const [priorityFilter, setPriorityFilter] = useState<string>("All");
   const [dateFilter, setDateFilter] = useState("");
-  const [prescriberFilter, setPrescriberFilter] = useState<string | "All">("All");
   const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [selectedVisits, setSelectedVisits] = useState<string[]>([]);
+  const [showBulkActions, setShowBulkActions] = useState(false);
+  const [selectedVisit, setSelectedVisit] = useState<Visit | null>(null);
+  const [showEditVisitModal, setShowEditVisitModal] = useState(false);
+  const [showPatientOverviewModal, setShowPatientOverviewModal] = useState(false);
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
-  const [activeHistoryTab, setActiveHistoryTab] = useState("dispensed");
-  const [showSubstituteModal, setShowSubstituteModal] = useState<string | null>(null);
-  const [substituteForm, setSubstituteForm] = useState({
-    medication: "",
-    strength: "",
-    reason: ""
-  });
-  const [selectedQueueId, setSelectedQueueId] = useState<string | null>(null);
-  const itemsPerPage = 5;
+  const [isLoading, setIsLoading] = useState(true);
+  const [usePolling, setUsePolling] = useState(false);
 
-  // Sort queue by priority (High > Medium > Normal) and then by wait time
-  const [queue, setQueue] = useState<PharmacyQueueItem[]>(
-    [...pharmacyQueueMock].sort((a, b) => {
-      const priorityOrder = { "High": 3, "Medium": 2, "Normal": 1 };
-      const aPriority = priorityOrder[a.priority];
-      const bPriority = priorityOrder[b.priority];
-      
-      if (aPriority !== bPriority) {
-        return bPriority - aPriority;
+  const itemsPerPage = 10;
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+  const fetchVisits = async () => {
+    try {
+      const params = new URLSearchParams({
+        page: String(currentPage),
+        page_size: String(itemsPerPage),
+        ...(searchTerm && { search: searchTerm }),
+        ...(statusFilter !== "All" && { status: statusFilter }),
+        ...(priorityFilter !== "All" && { priority: priorityFilter }),
+        ...(dateFilter && { visit_date: dateFilter }),
+      });
+      console.log("Fetching visits from:", `${API_URL}/api/visits/?${params}`);
+      const visitsRes = await fetch(`${API_URL}/api/visits/?${params}`, {
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
+      if (!visitsRes.ok) {
+        const err: APIError = await visitsRes.json().catch(() => ({}));
+        throw new Error(err.detail || "Failed to fetch visits");
       }
-      
-      const aWaitMinutes = parseInt(a.waitTime.split(' ')[0]);
-      const bWaitMinutes = parseInt(b.waitTime.split(' ')[0]);
-      return bWaitMinutes - aWaitMinutes;
-    })
-  );
-
-  // Handle prescription selection for dispensing
-  const handlePrescriptionSelection = (queueId: string, prescriptionId: string, selected: boolean) => {
-    setQueue((prev) =>
-      prev.map((item) =>
-        item.id === queueId
-          ? {
-              ...item,
-              prescriptions: item.prescriptions.map((prescription) =>
-                prescription.id === prescriptionId
-                  ? { ...prescription, selectedForDispensing: selected }
-                  : prescription
-              )
-            }
-          : item
-      )
-    );
-  };
-
-  // Handle select all prescriptions for a queue item
-  const handleSelectAllPrescriptions = (queueId: string, selectAll: boolean) => {
-    setQueue((prev) =>
-      prev.map((item) =>
-        item.id === queueId
-          ? {
-              ...item,
-              prescriptions: item.prescriptions.map((prescription) =>
-                prescription.status === "Available" || prescription.status === "Substituted"
-                  ? { ...prescription, selectedForDispensing: selectAll }
-                  : prescription
-              )
-            }
-          : item
-      )
-    );
-  };
-
-  // Handle partial quantity change
-  const handlePartialQuantityChange = (queueId: string, prescriptionId: string, quantity: number) => {
-    setQueue((prev) =>
-      prev.map((item) =>
-        item.id === queueId
-          ? {
-              ...item,
-              prescriptions: item.prescriptions.map((prescription) =>
-                prescription.id === prescriptionId
-                  ? { ...prescription, partialQuantity: quantity }
-                  : prescription
-              )
-            }
-          : item
-      )
-    );
-  };
-
-  // Handle bulk dispensing of selected prescriptions
-  const handleDispenseSelected = (queueId: string) => {
-    const item = queue.find(q => q.id === queueId);
-    if (!item) return;
-
-    const selectedPrescriptions = item.prescriptions.filter(p => p.selectedForDispensing);
-    if (selectedPrescriptions.length === 0) {
-      alert("Please select at least one prescription to dispense");
-      return;
+      const visitsData = await visitsRes.json();
+      console.log("Visits response:", visitsData);
+      const mappedVisits = (visitsData.results || visitsData).map((v: any) => ({
+        id: v.id,
+        patient: v.patient,
+        patient_name: v.patient_name,
+        personal_number: v.personal_number || "",
+        clinic: v.clinic,
+        visit_time: v.visit_time,
+        visit_date: v.visit_date,
+        visit_type: v.visit_type,
+        visit_location: v.visit_location || "",
+        priority: v.priority,
+        status: v.status,
+        special_instructions: v.special_instructions || "",
+        created_at: v.created_at,
+        updated_at: v.updated_at,
+      }));
+      setVisits(mappedVisits);
+      setTotalPages(Math.ceil((visitsData.count || mappedVisits.length) / itemsPerPage));
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: String(err),
+        variant: "destructive",
+      });
+      console.error("Error:", err);
     }
+  };
 
-    setQueue((prev) =>
-      prev.map((queueItem) => {
-        if (queueItem.id === queueId) {
-          const updatedPrescriptions = queueItem.prescriptions.map((prescription) => {
-            if (prescription.selectedForDispensing) {
-              const quantityToDispense = prescription.partialQuantity || prescription.quantity;
-              return {
-                ...prescription,
-                status: "Dispensed" as PrescriptionStatus,
-                dispensedQuantity: quantityToDispense,
-                dispensedDate: new Date().toISOString().split('T')[0],
-                dispensedBy: "Pharm. Current User",
-                selectedForDispensing: false,
-                partialQuantity: undefined
-              };
-            }
-            return prescription;
-          });
+  const fetchPatients = async () => {
+    try {
+      console.log("Fetching patients from:", `${API_URL}/api/patients/`);
+      const patientsRes = await fetch(`${API_URL}/api/patients/`, {
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
+      if (!visits.ok) {
+        const err: APIError = await patientsRes.json().catch(() => ({}));
+        throw new Error(err.detail || "Failed to fetch patients");
+      }
+      const patientsData = await patientsRes.json();
+      console.log("Patients response:", patientsData);
+      const mappedPatients = (patientsData.results || patientsData).map((p: any) => ({
+        id: p.id,
+        personal_number: p.personal_number || "",
+        name: `${p.surname || ""} ${p.first_name || ""}`.trim(),
+        patient_type: p.patient_type,
+        gender: p.gender || "",
+        age: p.age || 0,
+        phone: p.phone || "",
+        email: p.email || "",
+        non_npa_type: p.non_npa_type || "",
+        photo: p.photo || "",
+      }));
+      setPatients(mappedPatients);
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: String(err),
+        variant: "destructive",
+      });
+      console.error("Error:", err);
+    }
+  };
 
-          const allDispensed = updatedPrescriptions.every(p => 
-            p.status === "Dispensed" || p.status === "Out of Stock"
-          );
-          
-          const anyDispensed = updatedPrescriptions.some(p => p.status === "Dispensed");
+  useEffect(() => {
+    const fetchData = async () => {
+      setIsLoading(true);
+      await Promise.all([fetchVisits(), fetchPatients()]);
+      setIsLoading(false);
+    };
+    fetchData();
+  }, [currentPage, searchTerm, statusFilter, priorityFilter, dateFilter]);
 
-          let newStatus: PharmacyStatus = queueItem.status;
-          if (allDispensed) {
-            newStatus = "Dispensed";
-          } else if (anyDispensed) {
-            newStatus = "Partially Dispensed";
+  useEffect(() => {
+    let ws: WebSocket | null = null;
+    let pollingInterval: NodeJS.Timeout | null = null;
+
+    const setupWebSocket = () => {
+      try {
+        console.log("Attempting WebSocket connection to:", `ws://localhost:8000/ws/visits/`);
+        ws = new WebSocket(`ws://localhost:8000/ws/visits/`);
+        ws.onopen = () => {
+          console.log("WebSocket connected successfully");
+          setUsePolling(false);
+        };
+        ws.onmessage = (e) => {
+          const data = JSON.parse(e.data);
+          console.log("WebSocket message received:", data);
+          if (data.type === "visit.update") {
+            setVisits((prev) => {
+              const updated = prev.map((v) =>
+                v.id === data.data.id ? { ...v, ...data.data, updated_at: new Date().toISOString() } : v
+              );
+              if (!prev.some((v) => v.id === data.data.id)) {
+                return [data.data, ...prev].slice(0, itemsPerPage);
+              }
+              return updated;
+            });
+            toast({
+              title: "Visit Updated",
+              description: `Visit ${data.data.id} status: ${data.data.status}`,
+              variant: "success",
+            });
           }
-
-          return {
-            ...queueItem,
-            prescriptions: updatedPrescriptions,
-            status: newStatus
-          };
-        }
-        return queueItem;
-      })
-    );
-  };
-
-  // Handle pharmacy actions
-  const handleAssignToMe = (queueId: string) => {
-    setQueue((prev) =>
-      prev.map((item) =>
-        item.id === queueId
-          ? { ...item, assignedTo: "Pharm. Current User", status: "Processing" as PharmacyStatus }
-          : item
-      )
-    );
-  };
-
-  const handleMarkReady = (queueId: string) => {
-    setQueue((prev) =>
-      prev.map((item) =>
-        item.id === queueId
-          ? { ...item, status: "Ready" as PharmacyStatus }
-          : item
-      )
-    );
-  };
-
-  const handleSubstituteDrug = (queueId: string, prescriptionId: string) => {
-    if (!substituteForm.medication || !substituteForm.strength || !substituteForm.reason) {
-      alert("Please fill in all substitute fields");
-      return;
-    }
-
-    setQueue((prev) =>
-      prev.map((item) => {
-        if (item.id === queueId) {
-          const updatedPrescriptions = item.prescriptions.map((prescription) => {
-            if (prescription.id === prescriptionId) {
-              return {
-                ...prescription,
-                status: "Substituted" as PrescriptionStatus,
-                inStock: true, // Mark as in stock after substitution
-                substitutedWith: {
-                  medication: substituteForm.medication,
-                  strength: substituteForm.strength,
-                  reason: substituteForm.reason,
-                  approvedBy: "Pharm. Current User"
-                }
-              };
-            }
-            return prescription;
+        };
+        ws.onerror = (err) => {
+          console.error("WebSocket error:", err);
+          toast({
+            title: "WebSocket Error",
+            description: "Real-time updates unavailable, switching to polling.",
+            variant: "destructive",
           });
+          setUsePolling(true);
+        };
+        ws.onclose = (event) => {
+          console.log("WebSocket closed:", event.code, event.reason);
+          toast({
+            title: "WebSocket Closed",
+            description: "Real-time updates unavailable, switching to polling.",
+            variant: "destructive",
+          });
+          setUsePolling(true);
+        };
+      } catch (err) {
+        console.error("WebSocket setup error:", err);
+        toast({
+          title: "WebSocket Setup Error",
+          description: "Failed to setup WebSocket, switching to polling.",
+          variant: "destructive",
+        });
+        setUsePolling(true);
+      }
+    };
 
-          return {
-            ...item,
-            prescriptions: updatedPrescriptions
-          };
-        }
-        return item;
-      })
-    );
+    if (!usePolling) {
+      setupWebSocket();
+    }
 
-    setShowSubstituteModal(null);
-    setSubstituteForm({ medication: "", strength: "", reason: "" });
+    if (usePolling) {
+      console.log("Starting polling for visits");
+      pollingInterval = setInterval(fetchVisits, 30000);
+    }
+
+    return () => {
+      if (ws) {
+        console.log("Closing WebSocket");
+        ws.close();
+      }
+      if (pollingInterval) {
+        console.log("Clearing polling interval");
+        clearInterval(pollingInterval);
+      }
+    };
+  }, [usePolling]);
+
+  const updateVisitStatus = async (visitId: string, newStatus: VisitStatus) => {
+    try {
+      console.log("Updating visit status:", visitId, newStatus);
+      const res = await fetch(`${API_URL}/api/visits/${visitId}/`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (!res.ok) {
+        const err: APIError = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Failed to update status");
+      }
+      const updatedVisit = await res.json();
+      console.log("Updated visit:", updatedVisit);
+      setVisits((prev) =>
+        prev.map((v) =>
+          v.id === visitId
+            ? { ...v, ...updatedVisit, updated_at: new Date().toISOString() }
+            : v
+        )
+      );
+      toast({
+        title: "Success",
+        description: `Visit ${visitId} updated to ${newStatus}`,
+        variant: "success",
+      });
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: String(err),
+        variant: "destructive",
+      });
+      console.error("Error:", err);
+    }
   };
 
-  const handleHold = (queueId: string) => {
-    setQueue((prev) =>
-      prev.map((item) =>
-        item.id === queueId
-          ? { ...item, status: "On Hold" as PharmacyStatus }
-          : item
+  const handleBulkStatusUpdate = async (status: VisitStatus) => {
+    try {
+      console.log("Bulk updating visits to status:", status, selectedVisits);
+      await Promise.all(
+        selectedVisits.map(async (visitId) => {
+          const res = await fetch(`${API_URL}/api/visits/${visitId}/`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status }),
+          });
+          if (!res.ok) {
+            const err: APIError = await res.json().catch(() => ({}));
+            throw new Error(err.detail || `Failed to update visit ${visitId}`);
+          }
+          return res.json();
+        })
+      );
+      setVisits((prev) =>
+        prev.map((v) =>
+          selectedVisits.includes(v.id)
+            ? { ...v, status, updated_at: new Date().toISOString() }
+            : v
+        )
+      );
+      setSelectedVisits([]);
+      setShowBulkActions(false);
+      toast({
+        title: "Success",
+        description: `Updated ${selectedVisits.length} visits to ${status}`,
+        variant: "success",
+      });
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: String(err),
+        variant: "destructive",
+      });
+      console.error("Error:", err);
+    }
+  };
+
+  const handleEditVisit = (visit: Visit) => {
+    // Directly update state without async call, assuming EditVisitModal handles the API call
+    setVisits((prev) =>
+      prev.map((v) =>
+        v.id === visit.id
+          ? { ...v, ...visit, updated_at: new Date().toISOString() }
+          : v
       )
     );
+    setShowEditVisitModal(false);
+    toast({
+      title: "Success",
+      description: "Visit updated successfully",
+      variant: "success",
+    });
   };
 
-  // Get badge colors
-  const getPriorityColor = (priority: Priority) => {
-    switch (priority) {
-      case "High": return "bg-red-100 text-red-800 border-red-200";
-      case "Medium": return "bg-yellow-100 text-yellow-800 border-yellow-200";
-      case "Normal": return "bg-green-100 text-green-800 border-green-200";
-      default: return "bg-gray-100 text-gray-800 border-gray-200";
+  const handleVisitSelection = (visitId: string, checked: boolean) => {
+    setSelectedVisits((prev) =>
+      checked ? [...prev, visitId] : prev.filter((id) => id !== visitId)
+    );
+  };
+
+  const handleSelectAll = (checked: boolean) => {
+    setSelectedVisits(checked ? visits.map((v) => v.id) : []);
+  };
+
+  const handleViewPatient = (patientId: string) => {
+    if (patientId) {
+      console.log("Viewing patient:", patientId);
+      setSelectedPatientId(patientId);
+      setShowPatientOverviewModal(true);
     }
   };
 
-  const getStatusColor = (status: PharmacyStatus) => {
-    switch (status) {
-      case "Processing": return "bg-blue-100 text-blue-800 border-blue-200";
-      case "Ready": return "bg-green-100 text-green-800 border-green-200";
-      case "Pending": return "bg-gray-100 text-gray-800 border-gray-200";
-      case "Dispensed": return "bg-purple-100 text-purple-800 border-purple-200";
-      case "Partially Dispensed": return "bg-orange-100 text-orange-800 border-orange-200";
-      case "On Hold": return "bg-red-100 text-red-800 border-red-200";
-      default: return "bg-gray-100 text-gray-800 border-gray-200";
-    }
-  };
+  // Use backend-filtered and sorted visits
+  const paginatedVisits = visits;
 
-  const getPrescriptionStatusColor = (status: PrescriptionStatus) => {
-    switch (status) {
-      case "Available": return "bg-green-100 text-green-800 border-green-200";
-      case "Pending": return "bg-gray-100 text-gray-800 border-gray-200";
-      case "Dispensed": return "bg-purple-100 text-purple-800 border-purple-200";
-      case "Out of Stock": return "bg-red-100 text-red-800 border-red-200";
-      case "Substituted": return "bg-blue-100 text-blue-800 border-blue-200";
-      default: return "bg-gray-100 text-gray-800 border-gray-200";
-    }
-  };
-
-  // Filters
-  const filteredQueue = queue.filter((item) => {
-    const matchesSearch = item.patientName
-      .toLowerCase()
-      .includes(searchTerm.toLowerCase()) ||
-      item.prescriptions.some(p => p.medication.toLowerCase().includes(searchTerm.toLowerCase()));
-    const matchesPriority = priorityFilter === "All" || item.priority === priorityFilter;
-    const matchesStatus = statusFilter === "All" || item.status === statusFilter;
-    const matchesDate = !dateFilter || item.orderDate === dateFilter;
-    const matchesPrescriber = prescriberFilter === "All" || item.prescribedBy === prescriberFilter;
-    return matchesSearch && matchesPriority && matchesStatus && matchesDate && matchesPrescriber;
-  });
-
-  const totalPages = Math.ceil(filteredQueue.length / itemsPerPage);
-  const paginatedQueue = filteredQueue.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  );
-
-  const prescribers = Array.from(new Set(queue.map((item) => item.prescribedBy)));
-
-  // Enhanced summary statistics
   const stats = {
-    total: queue.length,
-    highPriority: queue.filter(item => item.priority === "High").length,
-    pending: queue.filter(item => item.status === "Pending").length,
-    processing: queue.filter(item => item.status === "Processing").length,
-    ready: queue.filter(item => item.status === "Ready").length,
-    onHold: queue.filter(item => item.status === "On Hold").length,
-    partiallyDispensed: queue.filter(item => item.status === "Partially Dispensed").length,
-    fromConsultation: queue.filter(item => item.sentFromConsultation).length,
-    avgWaitTime: Math.round(
-      queue.reduce((sum, item) => sum + parseInt(item.waitTime.split(' ')[0]), 0) / queue.length
-    ),
-    totalAvailableItems: queue.reduce((sum, item) => 
-      sum + item.prescriptions.filter(p => 
-        p.status === "Available" || p.status === "Substituted"
-      ).length, 0
-    ),
-    totalDispensedItems: queue.reduce((sum, item) => 
-      sum + item.prescriptions.filter(p => p.status === "Dispensed").length, 0
-    )
+    total: visits.length,
+    scheduled: visits.filter((v) => v.status === "Scheduled").length,
+    confirmed: visits.filter((v) => v.status === "Confirmed").length,
+    inProgress: visits.filter((v) => v.status === "In Progress").length,
+    completed: visits.filter((v) => v.status === "Completed").length,
+    cancelled: visits.filter((v) => v.status === "Cancelled").length,
+    rescheduled: visits.filter((v) => v.status === "Rescheduled").length,
   };
 
-  // Get prescription history for selected patient
-  const selectedPatientHistory = selectedPatientId ? mockPrescriptionHistory[selectedPatientId] : null;
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center h-screen">
+        <Loader />
+      </div>
+    );
+  }
 
   return (
-    <div className="max-w-6xl mx-auto p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">Pharmacy Pool Queue</h1>
-        <Button>
-          <Plus className="h-4 w-4 mr-2" />
-          Add Prescription
-        </Button>
-      </div>
-
-      {/* Enhanced Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
-        <Card className="bg-card text-card-foreground transition hover:shadow-lg hover:scale-[1.02]">
-          <CardHeader className="flex items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Total in Queue</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.total}</div>
-            <p className="text-xs text-muted-foreground">{stats.highPriority} high priority</p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-card text-card-foreground transition hover:shadow-lg hover:scale-[1.02]">
-          <CardHeader className="flex items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Available Items</CardTitle>
-            <Package className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">{stats.totalAvailableItems}</div>
-            <p className="text-xs text-muted-foreground">Ready to dispense</p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-card text-card-foreground transition hover:shadow-lg hover:scale-[1.02]">
-          <CardHeader className="flex items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Dispensed Items</CardTitle>
-            <CheckCircle className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-purple-600">{stats.totalDispensedItems}</div>
-            <p className="text-xs text-muted-foreground">Completed</p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-card text-card-foreground transition hover:shadow-lg hover:scale-[1.02]">
-          <CardHeader className="flex items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Processing</CardTitle>
-            <Pill className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-blue-600">{stats.processing}</div>
-            <p className="text-xs text-muted-foreground">Being prepared</p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-card text-card-foreground transition hover:shadow-lg hover:scale-[1.02]">
-          <CardHeader className="flex items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">On Hold</CardTitle>
-            <AlertCircle className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-red-600">{stats.onHold}</div>
-            <p className="text-xs text-muted-foreground">Need attention</p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-card text-card-foreground transition hover:shadow-lg hover:scale-[1.02]">
-          <CardHeader className="flex items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Avg Wait</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.avgWaitTime} min</div>
-            <p className="text-xs text-muted-foreground">Processing time</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Search & Filter Section */}
-      <div className="space-y-4 p-4 border rounded">
-        <h2 className="font-semibold">Search & Filter</h2>
+    <Card className="max-w-7xl mx-auto shadow-xl overflow-y-auto max-h-screen">
+      <CardHeader className="rounded-t-lg">
+        <div className="flex justify-between items-center">
+          <CardTitle className="text-3xl font-bold flex items-center gap-2">
+            <Calendar className="h-8 w-8" />
+            Manage Visits
+          </CardTitle>
+          <Button
+            className="bg-gray-900 hover:bg-gray-900 text-white"
+            onClick={() => router.push("/medical-records/create-visit")}
+          >
+            Create Visit
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="p-6 space-y-6">
+        {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div>
-            <Label htmlFor="search">Search Queue</Label>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <Input
-                id="search"
-                placeholder="Search by patient or medication"
-                value={searchTerm}
-                onChange={(e) => {
-                  setSearchTerm(e.target.value);
-                  setCurrentPage(1);
-                }}
-                className="pl-10"
-              />
+          {[
+            { label: "Total", value: stats.total, icon: User },
+            { label: "Scheduled", value: stats.scheduled, icon: Calendar },
+            { label: "Confirmed", value: stats.confirmed, icon: CheckCircle },
+            { label: "In Progress", value: stats.inProgress, icon: Clock },
+            { label: "Completed", value: stats.completed, icon: CheckCircle },
+            { label: "Cancelled", value: stats.cancelled, icon: X },
+            { label: "Rescheduled", value: stats.rescheduled, icon: Clock },
+          ].map(({ label, value, icon: Icon }) => (
+            <Card
+              key={label}
+              className="bg-card text-card-foreground transition hover:shadow-lg hover:scale-[1.02]"
+            >
+              <CardHeader className="flex items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium">{label}</CardTitle>
+                <Icon className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{value}</div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        {/* Search & Filter */}
+        <Card>
+          <CardHeader>
+            <div className="flex justify-between items-center">
+              <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                <Filter className="h-4 w-4" />
+                Search & Filter
+              </CardTitle>
+              {selectedVisits.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowBulkActions(true)}
+                >
+                  Bulk Actions ({selectedVisits.length})
+                </Button>
+              )}
             </div>
-          </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div>
+                <Label htmlFor="search">Search Visits</Label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Input
+                    id="search"
+                    placeholder="Search by patient name, personal number, or visit ID"
+                    value={searchTerm}
+                    onChange={(e) => {
+                      setSearchTerm(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    className="pl-10"
+                  />
+                </div>
+              </div>
+              <div>
+                <Label>Status Filter</Label>
+                <Select
+                  value={statusFilter}
+                  onValueChange={(value: VisitStatus | "All") => {
+                    setStatusFilter(value);
+                    setCurrentPage(1);
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Filter by status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="All">All Status</SelectItem>
+                    {["Scheduled", "Confirmed", "In Progress", "Completed", "Cancelled", "Rescheduled"].map(
+                      (status) => (
+                        <SelectItem key={status} value={status}>
+                          {status}
+                        </SelectItem>
+                      )
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Priority Filter</Label>
+                <Select
+                  value={priorityFilter}
+                  onValueChange={(value) => {
+                    setPriorityFilter(value);
+                    setCurrentPage(1);
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Filter by priority" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="All">All Priorities</SelectItem>
+                    {["Emergency", "High", "Medium", "Low"].map((priority) => (
+                      <SelectItem key={priority} value={priority}>
+                        {priority}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="date-filter">Date Filter</Label>
+                <Input
+                  id="date-filter"
+                  type="date"
+                  value={dateFilter}
+                  onChange={(e) => {
+                    setDateFilter(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
-          <div>
-            <Label>Priority Filter</Label>
-            <Select 
-              value={priorityFilter} 
-              onValueChange={(value: Priority | "All") => {
-                setPriorityFilter(value);
-                setCurrentPage(1);
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Filter by priority" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="All">All Priorities</SelectItem>
-                <SelectItem value="High">High Priority</SelectItem>
-                <SelectItem value="Medium">Medium Priority</SelectItem>
-                <SelectItem value="Normal">Normal Priority</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div>
-            <Label>Status Filter</Label>
-            <Select 
-              value={statusFilter} 
-              onValueChange={(value: PharmacyStatus | "All") => {
-                setStatusFilter(value);
-                setCurrentPage(1);
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Filter by status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="All">All Status</SelectItem>
-                <SelectItem value="Pending">Pending</SelectItem>
-                <SelectItem value="Processing">Processing</SelectItem>
-                <SelectItem value="Ready">Ready</SelectItem>
-                <SelectItem value="Partially Dispensed">Partially Dispensed</SelectItem>
-                <SelectItem value="Dispensed">Dispensed</SelectItem>
-                <SelectItem value="On Hold">On Hold</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div>
-            <Label htmlFor="date-filter">Date Filter</Label>
-            <Input
-              id="date-filter"
-              type="date"
-              value={dateFilter}
-              onChange={(e) => {
-                setDateFilter(e.target.value);
-                setCurrentPage(1);
-              }}
-            />
-          </div>
-
-          <div>
-            <Label>Prescriber Filter</Label>
-            <Select 
-              value={prescriberFilter} 
-              onValueChange={(value) => {
-                setPrescriberFilter(value);
-                setCurrentPage(1);
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Filter by prescriber" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="All">All Prescribers</SelectItem>
-                {prescribers.map((prescriber) => (
-                  <SelectItem key={prescriber} value={prescriber}>
-                    {prescriber}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+        {/* Results Summary */}
+        <div className="flex items-center justify-between">
+          <div className="text-sm text-gray-600 flex items-center gap-4">
+            <span>
+              Showing {paginatedVisits.length} of {visits.length} visits
+            </span>
+            {paginatedVisits.length > 0 && (
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  checked={selectedVisits.length === paginatedVisits.length}
+                  onCheckedChange={handleSelectAll}
+                />
+                <span className="text-xs">Select all on page</span>
+              </div>
+            )}
           </div>
         </div>
-      </div>
 
-      {/* Results Summary */}
-      <div className="text-sm text-gray-600">
-        Showing {paginatedQueue.length} of {filteredQueue.length} prescriptions in queue
-      </div>
-
-      {/* Queue Items */}
-      <div className="space-y-4">
-        {paginatedQueue.length > 0 ? (
-          paginatedQueue.map((item) => {
-            const availableCount = item.prescriptions.filter(p => p.status === "Available" || p.status === "Substituted").length;
-            const outOfStockCount = item.prescriptions.filter(p => p.status === "Out of Stock").length;
-            const dispensedCount = item.prescriptions.filter(p => p.status === "Dispensed").length;
-
-            return (
-              <Card key={item.id} className="hover:shadow-md transition-shadow">
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between">
-                    <div className="space-y-1">
-                      <CardTitle className="text-lg flex items-center gap-3">
-                        <span>{item.patientName}</span>
-                        <span className="text-sm text-muted-foreground font-normal">
-                          RX ID: {item.id}
-                        </span>
-                      </CardTitle>
-                      <CardDescription className="text-sm">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Clock className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-orange-600 font-medium">
-                            Waiting: {item.waitTime}
-                          </span>
-                          <span className="text-blue-600">
-                            • Est. Complete: {item.estimatedCompletionTime}
-                          </span>
-                        </div>
-                        <div className="space-y-1">
-                          <div className="flex flex-wrap gap-4 text-xs">
-                            <span><strong>Location:</strong> {item.location}</span>
-                            <span><strong>Gender:</strong> {item.gender}</span>
-                            <span><strong>Age:</strong> {item.age} yrs</span>
-                            <span><strong>Category:</strong> {item.employeeCategory}</span>
-                            <span><strong>Phone:</strong> {item.phoneNumber}</span>
-                          </div>
-                          <div className="flex items-center gap-4 text-xs">
-                            <span><strong>Prescribed by:</strong> {item.prescribedBy}</span>
-                          </div>
-                          {item.sentFromConsultation && (
-                            <div className="flex items-center gap-2">
-                              <Stethoscope className="h-3 w-3 text-green-600" />
-                              <span className="text-green-600 text-xs font-medium">
-                                From Consultation {item.consultationRoom && `(${item.consultationRoom})`}
-                              </span>
-                            </div>
-                          )}
-                          {item.allergies.length > 0 && (
-                            <div className="flex items-center gap-2">
-                              <AlertTriangle className="h-3 w-3 text-red-600" />
-                              <span className="text-red-600 text-xs font-medium">
-                                Allergies: {item.allergies.join(", ")}
-                              </span>
-                            </div>
-                          )}
-                          {item.specialInstructions && (
-                            <div className="text-xs text-gray-600 bg-yellow-50 p-2 rounded">
-                              <strong>Special Instructions:</strong> {item.specialInstructions}
-                            </div>
-                          )}
-                          {item.pharmacistNotes && (
-                            <div className="text-xs text-gray-600">
-                              <strong>Pharmacist Notes:</strong> {item.pharmacistNotes}
-                            </div>
-                          )}
-                        </div>
-                      </CardDescription>
-                    </div>
-                    <div className="flex items-center space-x-2 flex-shrink-0">
-                      <Badge className={getPriorityColor(item.priority)} variant="outline">
-                        {item.priority}
-                      </Badge>
-                      <Badge className={getStatusColor(item.status)} variant="outline">
-                        {item.status}
-                      </Badge>
-                      {item.sentFromConsultation && (
-                        <Badge className="bg-green-100 text-green-800 border-green-200" variant="outline">
-                          From Consult
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="pt-0">
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-muted-foreground mb-4">
-                    <div>
-                      <strong className="text-foreground">Order Date:</strong>
-                      <div>{formatDate(item.orderDate)}</div>
-                    </div>
-                    <div>
-                      <strong className="text-foreground">Order Time:</strong>
-                      <div>{item.orderTime}</div>
-                    </div>
-                    <div>
-                      <strong className="text-foreground">Assigned to:</strong>
-                      <div>{item.assignedTo}</div>
-                    </div>
-                    <div>
-                      <strong className="text-foreground">Prescriptions:</strong>
-                      <div>{availableCount} available, {outOfStockCount} out of stock, {dispensedCount} dispensed</div>
-                    </div>
-                  </div>
-                  
-                  <div className="flex justify-end space-x-2 flex-wrap gap-2">
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      onClick={() => setSelectedQueueId(item.id)}
-                    >
-                      <Eye className="h-4 w-4 mr-1" />
-                      View & Dispense Prescriptions
-                    </Button>
-                    {item.status === "Pending" && (
-                      <Button 
-                        size="sm" 
-                        onClick={() => handleAssignToMe(item.id)}
-                        className="hover:bg-blue-600"
-                      >
-                        <UserCheck className="h-4 w-4 mr-1" />
-                        Assign & Process
-                      </Button>
-                    )}
-                    {item.status === "Processing" && (
-                      <Button 
-                        size="sm"
-                        onClick={() => handleMarkReady(item.id)}
-                        className="hover:bg-green-600"
-                      >
-                        <CheckCircle className="h-4 w-4 mr-1" />
-                        Mark Ready
-                      </Button>
-                    )}
-                    {item.status === "Dispensed" && (
-                      <Button size="sm" variant="outline" disabled>
-                        <CheckCircle className="h-4 w-4 mr-1" />
-                        All Dispensed
-                      </Button>
-                    )}
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="hover:bg-red-50"
-                      onClick={() => handleHold(item.id)}
-                      disabled={item.status === "On Hold" || item.status === "Dispensed"}
-                    >
-                      <AlertCircle className="h-4 w-4 mr-1" />
-                      Hold
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="hover:bg-blue-50"
-                      onClick={() => setSelectedPatientId(item.patientId)}
-                    >
-                      <Eye className="h-4 w-4 mr-1" />
-                      History
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })
-        ) : (
-          <Card>
-            <CardContent className="py-12 text-center">
-              <div className="text-muted-foreground">
-                <Search className="mx-auto h-12 w-12 mb-4" />
-                <p className="text-lg font-medium mb-1">No prescriptions in queue</p>
-                <p className="text-sm">
-                  Try adjusting your search or filter criteria
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-      </div>
-
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <div className="text-sm text-gray-700">
-            Page {currentPage} of {totalPages}
-          </div>
-          <div className="flex gap-1">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-              disabled={currentPage === 1}
-            >
-              Previous
-            </Button>
-            
-            {Array.from({ length: Math.min(5, totalPages) }).map((_, index) => {
-              let pageNumber;
-              if (totalPages <= 5) {
-                pageNumber = index + 1;
-              } else if (currentPage <= 3) {
-                pageNumber = index + 1;
-              } else if (currentPage >= totalPages - 2) {
-                pageNumber = totalPages - 4 + index;
-              } else {
-                pageNumber = currentPage - 2 + index;
-              }
+        {/* Visit Cards */}
+        <div className="space-y-4">
+          {paginatedVisits.length > 0 ? (
+            paginatedVisits.map((visit) => {
+              const patient = patients.find((p) => p.id === visit.patient);
+              const isSelected = selectedVisits.includes(visit.id);
+              const canEdit = ["Scheduled", "Confirmed", "Rescheduled"].includes(visit.status);
+              const canCancel = ["Scheduled", "Confirmed"].includes(visit.status);
 
               return (
-                <Button
-                  key={pageNumber}
-                  variant={pageNumber === currentPage ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setCurrentPage(pageNumber)}
+                <Card
+                  key={visit.id}
+                  className={`hover:shadow-md transition-all ${isSelected ? "ring-2 ring-blue-500" : ""}`}
                 >
-                  {pageNumber}
-                </Button>
-              );
-            })}
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
-              disabled={currentPage === totalPages}
-            >
-              Next
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* Substitute Modal */}
-      <Dialog open={!!showSubstituteModal} onOpenChange={() => setShowSubstituteModal(null)}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Substitute Medication</DialogTitle>
-          </DialogHeader>
-          {showSubstituteModal && (() => {
-            const [queueId, prescriptionId] = showSubstituteModal.split('|');
-            const item = queue.find(q => q.id === queueId);
-            const prescription = item?.prescriptions.find(p => p.id === prescriptionId);
-
-            if (!prescription) return null;
-
-            return (
-              <div className="space-y-4">
-                <div className="bg-gray-50 p-3 rounded">
-                  <h4 className="font-medium">Original Prescription:</h4>
-                  <p>{prescription.medication} {prescription.strength}</p>
-                  <p className="text-sm text-gray-600">{prescription.dosage} {prescription.frequency}</p>
-                </div>
-
-                <div className="space-y-3">
-                  <div>
-                    <Label htmlFor="substitute-medication">Substitute Medication</Label>
-                    <Input
-                      id="substitute-medication"
-                      value={substituteForm.medication}
-                      onChange={(e) => setSubstituteForm(prev => ({ ...prev, medication: e.target.value }))}
-                      placeholder="Enter substitute medication name"
-                    />
-                  </div>
-
-                  <div>
-                    <Label htmlFor="substitute-strength">Strength</Label>
-                    <Input
-                      id="substitute-strength"
-                      value={substituteForm.strength}
-                      onChange={(e) => setSubstituteForm(prev => ({ ...prev, strength: e.target.value }))}
-                      placeholder="Enter strength (e.g., 500mg)"
-                    />
-                  </div>
-
-                  <div>
-                    <Label htmlFor="substitute-reason">Reason for Substitution</Label>
-                    <Select 
-                      value={substituteForm.reason}
-                      onValueChange={(value) => setSubstituteForm(prev => ({ ...prev, reason: value }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select reason" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Out of Stock">Out of Stock</SelectItem>
-                        <SelectItem value="Patient Preference">Patient Preference</SelectItem>
-                        <SelectItem value="Generic Substitution">Generic Substitution</SelectItem>
-                        <SelectItem value="Dosage Form Change">Dosage Form Change</SelectItem>
-                        <SelectItem value="Allergy Concern">Allergy Concern</SelectItem>
-                        <SelectItem value="Cost Consideration">Cost Consideration</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="flex gap-2 pt-4">
-                  <Button 
-                    onClick={() => handleSubstituteDrug(queueId, prescriptionId)}
-                    className="flex-1"
-                  >
-                    Confirm Substitution
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    onClick={() => setShowSubstituteModal(null)}
-                    className="flex-1"
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              </div>
-            );
-          })()}
-        </DialogContent>
-      </Dialog>
-
-      {/* Patient History Modal */}
-      <Dialog open={!!selectedPatientId} onOpenChange={() => setSelectedPatientId(null)}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden">
-          <DialogHeader>
-            <DialogTitle>Patient History</DialogTitle>
-          </DialogHeader>
-          {selectedPatientId && selectedPatientHistory && (() => {
-            const patient = queue.find(q => q.patientId === selectedPatientId);
-            if (!patient) return null;
-
-            const getInteractionStatusColor = (status: string) => {
-              switch (status) {
-                case "Minor": 
-                  return "bg-green-100 text-green-800 border-green-200";
-                case "Moderate": 
-                  return "bg-yellow-100 text-yellow-800 border-yellow-200";
-                case "Major": 
-                  return "bg-red-100 text-red-800 border-red-200";
-                default: 
-                  return "bg-gray-100 text-gray-800 border-gray-200";
-              }
-            };
-
-            const tabButtons = [
-              { id: "dispensed", label: "Dispensed Medications", icon: Pill },
-              { id: "interactions", label: "Drug Interactions", icon: AlertTriangle },
-              { id: "adherence", label: "Adherence Records", icon: Activity }
-            ];
-
-            return (
-              <div>
-                <div className="p-4 border-b">
-                  <h2 className="text-2xl font-bold">{patient.patientName} - Prescription History</h2>
-                  <p className="text-gray-600">Patient ID: {patient.patientId} | Age: {patient.age} | Gender: {patient.gender}</p>
-                  {patient.allergies.length > 0 && (
-                    <div className="flex items-center gap-2 mt-2">
-                      <AlertTriangle className="h-4 w-4 text-red-500" />
-                      <span className="text-sm text-red-600 font-medium">
-                        Allergies: {patient.allergies.join(", ")}
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex border-b">
-                  {tabButtons.map(tab => {
-                    const IconComponent = tab.icon;
-                    return (
-                      <button
-                        key={tab.id}
-                        onClick={() => setActiveHistoryTab(tab.id)}
-                        className={`px-4 py-3 text-sm font-medium flex items-center gap-2 border-b-2 transition-colors ${
-                          activeHistoryTab === tab.id
-                            ? "border-blue-500 text-blue-600 bg-blue-50"
-                            : "border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50"
-                        }`}
-                      >
-                        <IconComponent className="h-4 w-4" />
-                        {tab.label}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div className="p-6 overflow-y-auto max-h-[60vh]">
-                  {activeHistoryTab === "dispensed" && (
-                    <div className="space-y-4">
-                      <h3 className="text-lg font-semibold mb-4">Recently Dispensed Medications</h3>
-                      {selectedPatientHistory.dispensedMedications.length > 0 ? (
-                        selectedPatientHistory.dispensedMedications.map((medication) => (
-                          <Card key={medication.id}>
-                            <CardHeader className="pb-2">
-                              <div className="flex items-start justify-between">
-                                <div>
-                                  <CardTitle className="text-base">{medication.medication}</CardTitle>
-                                  <CardDescription>
-                                    Dispensed on {formatDate(medication.dispensedDate)} by {medication.dispensedBy}
-                                  </CardDescription>
-                                </div>
-                                {medication.adherenceScore && (
-                                  <Badge className={medication.adherenceScore >= 90 ? "bg-green-100 text-green-800" : medication.adherenceScore >= 80 ? "bg-yellow-100 text-yellow-800" : "bg-red-100 text-red-800"} variant="outline">
-                                    {medication.adherenceScore}% Adherence
-                                  </Badge>
-                                )}
-                              </div>
-                            </CardHeader>
-                            <CardContent>
-                              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
-                                <div><strong>Quantity:</strong> {medication.quantity}</div>
-                                <div><strong>Refills Left:</strong> {medication.refillsRemaining}</div>
-                                <div><strong>Prescribed by:</strong> {medication.prescribedBy}</div>
-                                {medication.nextRefillDate && (
-                                  <div className="col-span-2"><strong>Next Refill:</strong> {formatDate(medication.nextRefillDate)}</div>
-                                )}
-                              </div>
-                            </CardContent>
-                          </Card>
-                        ))
-                      ) : (
-                        <div className="text-center text-gray-500 py-8">
-                          <Pill className="mx-auto h-12 w-12 mb-4 text-gray-300" />
-                          <p>No dispensed medications found</p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {activeHistoryTab === "interactions" && (
-                    <div className="space-y-4">
-                      <h3 className="text-lg font-semibold mb-4">Drug Interactions</h3>
-                      {selectedPatientHistory.interactions.length > 0 ? (
-                        selectedPatientHistory.interactions.map((interaction) => (
-                          <Card key={interaction.id} className="border-l-4 border-l-yellow-400">
-                            <CardHeader className="pb-2">
-                              <div className="flex items-start justify-between">
-                                <CardTitle className="text-base">{interaction.drug1} + {interaction.drug2}</CardTitle>
-                                <Badge className={getInteractionStatusColor(interaction.interactionType)} variant="outline">
-                                  {interaction.interactionType}
-                                </Badge>
-                              </div>
-                            </CardHeader>
-                            <CardContent>
-                              <div className="space-y-2">
-                                <div><strong>Description:</strong> {interaction.description}</div>
-                                <div><strong>Recommendation:</strong> {interaction.recommendation}</div>
-                                <div><strong>Identified:</strong> {formatDate(interaction.dateIdentified)}</div>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        ))
-                      ) : (
-                        <div className="text-center text-gray-500 py-8">
-                          <Shield className="mx-auto h-12 w-12 mb-4 text-gray-300" />
-                          <p>No drug interactions detected</p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {activeHistoryTab === "adherence" && (
-                    <div className="space-y-4">
-                      <h3 className="text-lg font-semibold mb-4">Medication Adherence</h3>
-                      {selectedPatientHistory.adherenceRecords.length > 0 ? (
-                        selectedPatientHistory.adherenceRecords.map((record) => (
-                          <Card key={record.id}>
-                            <CardHeader className="pb-2">
-                              <CardTitle className="text-base">{record.medication}</CardTitle>
-                              <CardDescription>Period: {record.period}</CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                              <div className="space-y-2">
-                                <div className="flex items-center gap-4">
-                                  <div><strong>Adherence:</strong> {record.adherencePercentage}%</div>
-                                  <div><strong>Missed Doses:</strong> {record.missedDoses}</div>
-                                </div>
-                                <div className="w-full bg-gray-200 rounded-full h-2">
-                                  <div 
-                                    className={`h-2 rounded-full ${record.adherencePercentage >= 90 ? 'bg-green-500' : record.adherencePercentage >= 80 ? 'bg-yellow-500' : 'bg-red-500'}`}
-                                    style={{ width: `${record.adherencePercentage}%` }}
-                                  ></div>
-                                </div>
-                                {record.notes && (
-                                  <div><strong>Notes:</strong> {record.notes}</div>
-                                )}
-                              </div>
-                            </CardContent>
-                          </Card>
-                        ))
-                      ) : (
-                        <div className="text-center text-gray-500 py-8">
-                          <Activity className="mx-auto h-12 w-12 mb-4 text-gray-300" />
-                          <p>No adherence records available</p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })()}
-        </DialogContent>
-      </Dialog>
-
-      {/* Prescription Modal */}
-      <Dialog open={!!selectedQueueId} onOpenChange={() => setSelectedQueueId(null)}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Prescriptions</DialogTitle>
-          </DialogHeader>
-          {selectedQueueId && (() => {
-            const item = queue.find(q => q.id === selectedQueueId);
-            if (!item) return null;
-
-            const selectablePrescriptions = item.prescriptions.filter(p => 
-              p.status === "Available" || p.status === "Substituted"
-            );
-            const hasSelectablePrescriptions = selectablePrescriptions.length > 0;
-            const allSelected = selectablePrescriptions.length > 0 && 
-              selectablePrescriptions.every(p => p.selectedForDispensing);
-            const someSelected = selectablePrescriptions.some(p => p.selectedForDispensing);
-
-            return (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h4 className="font-medium text-sm">Prescriptions for {item.patientName} (RX ID: {item.id}):</h4>
-                  {hasSelectablePrescriptions && (
-                    <div className="flex items-center gap-2">
-                      <Checkbox
-                        id={`select-all-modal-${item.id}`}
-                        checked={allSelected}
-                        onCheckedChange={(checked) => handleSelectAllPrescriptions(item.id, !!checked)}
-                      />
-                      <Label htmlFor={`select-all-modal-${item.id}`} className="text-xs">
-                        Select All Available
-                      </Label>
-                    </div>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  {item.prescriptions.map((prescription) => (
-                    <div key={prescription.id} className="bg-gray-50 p-3 rounded text-sm border-l-4 border-l-gray-300">
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-start gap-3 flex-1">
-                          {(prescription.status === "Available" || prescription.status === "Substituted") && (
-                            <Checkbox
-                              id={`prescription-modal-${prescription.id}`}
-                              checked={prescription.selectedForDispensing || false}
-                              onCheckedChange={(checked) =>
-                                handlePrescriptionSelection(item.id, prescription.id, !!checked)
-                              }
-                            />
-                          )}
-                          <div className="space-y-1 flex-1">
-                            <div className="font-medium flex items-center gap-2">
-                              {prescription.substitutedWith ? (
-                                <div>
-                                  <span className="line-through text-gray-500">
-                                    {prescription.medication} {prescription.strength}
-                                  </span>
-                                  <ArrowRight className="inline h-3 w-3 mx-1" />
-                                  <span className="text-blue-600">
-                                    {prescription.substitutedWith.medication} {prescription.substitutedWith.strength}
-                                  </span>
-                                </div>
-                              ) : (
-                                <span>{prescription.medication} {prescription.strength}</span>
-                              )}
-                              <Badge className={getPrescriptionStatusColor(prescription.status)} variant="outline">
-                                {prescription.status}
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-start gap-3">
+                        <Checkbox
+                          checked={isSelected}
+                          onCheckedChange={(checked) => handleVisitSelection(visit.id, checked as boolean)}
+                          className="mt-1"
+                        />
+                        <div className="space-y-2">
+                          <CardTitle className="text-lg flex items-center gap-3">
+                            <div className={`w-3 h-3 rounded-full ${getPriorityColor(visit.priority)}`} />
+                            <span>{visit.patient_name}</span>
+                            <span className="text-sm text-muted-foreground font-normal">
+                              ID: {visit.id}
+                            </span>
+                          </CardTitle>
+                          <CardDescription className="text-sm">
+                            <div className="flex items-center gap-4 mb-2">
+                              <Badge className={getPriorityColor(visit.priority)} variant="secondary">
+                                <div className="w-2 h-2 bg-white rounded-full mr-1" />
+                                {visit.priority}
                               </Badge>
-                              {prescription.genericAvailable && prescription.status !== "Substituted" && (
-                                <Badge className="bg-blue-100 text-blue-800 border-blue-200 text-xs" variant="outline">
-                                  Generic Available
-                                </Badge>
-                              )}
                             </div>
-                            <div className="text-xs text-gray-600">
-                              <strong>Dosage:</strong> {prescription.dosage} {prescription.frequency}
-                            </div>
-                            <div className="text-xs text-gray-600">
-                              <strong>Duration:</strong> {prescription.duration} | <strong>Quantity:</strong> {prescription.quantity}
-                              {prescription.dispensedQuantity && (
-                                <span className="text-green-600 ml-2">
-                                  (Dispensed: {prescription.dispensedQuantity})
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-xs text-gray-600">
-                              <strong>Instructions:</strong> {prescription.instructions}
-                            </div>
-                            {prescription.stockLevel !== undefined && (
-                              <div className="text-xs text-gray-600">
-                                <strong>Stock Level:</strong> {prescription.stockLevel} units
-                                {prescription.stockLevel < 10 && prescription.stockLevel > 0 && (
-                                  <span className="text-orange-600 ml-1">(Low Stock)</span>
+                            <div className="space-y-1">
+                              <div className="flex flex-wrap gap-4 text-xs">
+                                <span><strong>Patient Type:</strong> {patient?.patient_type || "Unknown"}</span>
+                                <span><strong>Gender:</strong> {patient?.gender || "Unknown"}</span>
+                                <span><strong>Age:</strong> {patient?.age || 0} yrs</span>
+                              </div>
+                              <div className="text-xs">
+                                <strong>Phone:</strong> {patient?.phone || "N/A"}
+                                {patient?.email && (
+                                  <span className="ml-4"><strong>Email:</strong> {patient?.email}</span>
                                 )}
                               </div>
-                            )}
-                            {prescription.substitutedWith && (
-                              <div className="text-xs text-blue-600 bg-blue-50 p-2 rounded mt-2">
-                                <strong>Substitution Reason:</strong> {prescription.substitutedWith.reason}<br/>
-                                <strong>Approved by:</strong> {prescription.substitutedWith.approvedBy}
-                              </div>
-                            )}
-                            {prescription.dispensedBy && (
-                              <div className="text-xs text-green-600">
-                                <strong>Dispensed by:</strong> {prescription.dispensedBy} on {prescription.dispensedDate}
-                              </div>
-                            )}
-                            {prescription.selectedForDispensing && (prescription.status === "Available" || prescription.status === "Substituted") && (
-                              <div className="mt-2 p-2 bg-blue-50 rounded">
-                                <Label htmlFor={`partial-qty-modal-${prescription.id}`} className="text-xs">
-                                  Quantity to Dispense (Max: {prescription.quantity})
-                                </Label>
-                                <Input
-                                  id={`partial-qty-modal-${prescription.id}`}
-                                  type="number"
-                                  min="1"
-                                  max={prescription.quantity}
-                                  value={prescription.partialQuantity || prescription.quantity}
-                                  onChange={(e) => handlePartialQuantityChange(
-                                    item.id, 
-                                    prescription.id, 
-                                    parseInt(e.target.value) || prescription.quantity
-                                  )}
-                                  className="mt-1 h-8 text-xs"
-                                />
-                              </div>
-                            )}
-                          </div>
+                            </div>
+                          </CardDescription>
                         </div>
-                        <div className="flex gap-1 ml-2 flex-wrap">
-                          {prescription.status === "Out of Stock" && (
+                      </div>
+                      <div className="flex items-center space-x-2 flex-shrink-0">
+                        <Badge className={getStatusColor(visit.status)} variant="outline">
+                          {visit.status}
+                        </Badge>
+                        <div className="flex gap-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleViewPatient(visit.patient)}
+                            className="hover:bg-blue-50 hover:border-blue-50"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          {canEdit && (
                             <Button
-                              size="sm"
                               variant="outline"
-                              onClick={() => setShowSubstituteModal(`${item.id}|${prescription.id}`)}
-                              className="text-xs px-2 py-1 h-auto"
+                              size="sm"
+                              className="hover:bg-green-50"
+                              onClick={() => {
+                                setSelectedVisit(visit);
+                                setShowEditVisitModal(true);
+                              }}
                             >
-                              <RefreshCw className="h-3 w-3 mr-1" />
-                              Substitute
+                              <Edit className="h-4 w-4" />
                             </Button>
                           )}
                         </div>
+                        <div className="ml-2">
+                          {visit.status === "Scheduled" && (
+                            <Button
+                              size="sm"
+                              onClick={() => updateVisitStatus(visit.id, "Confirmed")}
+                              className="hover:bg-blue-600"
+                            >
+                              <Send className="h-4 w-4 mr-1" />
+                              Confirm
+                            </Button>
+                          )}
+                          {visit.status === "Confirmed" && (
+                            <Button
+                              size="sm"
+                              onClick={() => updateVisitStatus(visit.id, "In Progress")}
+                              className="hover:bg-purple-600"
+                            >
+                              <Clock className="h-4 w-4 mr-1" />
+                              Start Visit
+                            </Button>
+                          )}
+                          {visit.status === "In Progress" && (
+                            <Button
+                              size="sm"
+                              onClick={() => updateVisitStatus(visit.id, "Completed")}
+                              className="hover:bg-green-600"
+                            >
+                              <CheckCircle className="h-4 w-4 mr-1" />
+                              Complete
+                            </Button>
+                          )}
+                          {["Completed", "Cancelled", "Rescheduled"].includes(visit.status) && (
+                            <Button size="sm" variant="outline" disabled>
+                              {visit.status}
+                            </Button>
+                          )}
+                        </div>
+                        {canCancel && (
+                          <Select
+                            onValueChange={(value) => {
+                              if (value === "cancel") {
+                                updateVisitStatus(visit.id, "Cancelled");
+                              } else if (value === "reschedule") {
+                                updateVisitStatus(visit.id, "Rescheduled");
+                              }
+                            }}
+                          >
+                            <SelectTrigger className="w-auto">
+                              <SelectValue placeholder="Actions" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="cancel">
+                                <div className="flex items-center gap-2">
+                                  <X className="h-4 w-4" />
+                                  Cancel Visit
+                                </div>
+                              </SelectItem>
+                              <SelectItem value="reschedule">
+                                <div className="flex items-center gap-2">
+                                  <Clock className="h-4 w-4" />
+                                  Reschedule
+                                </div>
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                        )}
                       </div>
                     </div>
-                  ))}
-                </div>
-                {hasSelectablePrescriptions && someSelected && (
-                  <div className="p-3 bg-blue-50 rounded border border-blue-200">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-blue-800">
-                        {selectablePrescriptions.filter(p => p.selectedForDispensing).length} item(s) selected for dispensing
-                      </span>
-                      <Button
-                        size="sm"
-                        onClick={() => handleDispenseSelected(item.id)}
-                        className="bg-blue-600 hover:bg-blue-700"
-                      >
-                        <Package className="h-4 w-4 mr-2" />
-                        Dispense Selected
-                      </Button>
+                  </CardHeader>
+                  <CardContent className="pt-0">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-muted-foreground">
+                      <div>
+                        <strong>Clinic:</strong> {visit.clinic}
+                      </div>
+                      <div>
+                        <strong>Type:</strong> {visit.visit_type}
+                      </div>
+                      <div>
+                        <strong>Date:</strong> {formatDate(visit.visit_date)}
+                      </div>
+                      <div>
+                        <strong>Time:</strong> {visit.visit_time}
+                      </div>
                     </div>
-                  </div>
-                )}
+                    {visit.special_instructions && (
+                      <div className="mt-3 p-2 bg-yellow-50 rounded text-sm">
+                        <strong>Notes:</strong> {visit.special_instructions}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })
+          ) : (
+            <Card>
+              <CardContent className="py-12 text-center">
+                <Search className="mx-auto h-12 w-12 mb-4" />
+                <p className="text-lg font-medium mb-1">No visits found</p>
+                <p className="text-sm">
+                  Try adjusting your search or filter criteria
+                </p>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+
+        {/* Bulk Actions Modal */}
+        <Dialog open={showBulkActions} onOpenChange={setShowBulkActions}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>
+                Bulk Actions ({selectedVisits.length} visits selected)
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="p-3 bg-green-50 border border-green-200 rounded text-sm">
+                <p>
+                  You have selected {selectedVisits.length} visits. Choose an
+                  action to apply to all selected visits.
+                </p>
               </div>
-            );
-          })()}
-        </DialogContent>
-      </Dialog>
-    </div>
+              <div className="space-y-2">
+                {["Completed", "Cancelled"].map((status) => (
+                  <Button
+                    key={status}
+                    className="w-full justify-start"
+                    variant="outline"
+                    onClick={() =>
+                      handleBulkStatusUpdate(status as VisitStatus)
+                    }
+                  >
+                    <Send className="h-4 w-4 mr-2" />
+                    {status === "Completed"
+                      ? "Complete All Visits"
+                      : "Cancel All Visits"}
+                  </Button>
+                ))}
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowBulkActions(false);
+                  setSelectedVisits([]);
+                }}
+              >
+                Cancel
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Edit Visit Modal */}
+        <Dialog open={showEditVisitModal} onOpenChange={setShowEditVisitModal}>
+          <DialogContent className="max-w-4xl">
+            <DialogHeader>
+              <DialogTitle>Edit Visit</DialogTitle>
+            </DialogHeader>
+            {selectedVisit && (
+              <EditVisitModal
+                open={showEditVisitModal}
+                onClose={() => setShowEditVisitModal(false)}
+                visit={selectedVisit}
+                patientId={selectedVisit.patient}
+                patientName={selectedVisit.patient_name}
+                onSave={handleEditVisit}
+              />
+            )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Patient Overview Modal */}
+        <Dialog
+          open={showPatientOverviewModal}
+          onOpenChange={setShowPatientOverviewModal}
+        >
+          <DialogContent className="max-w-4xl">
+            <DialogTitle>Patient Overview</DialogTitle>
+            {selectedPatientId && (
+              <PatientOverviewModalContent patientId={selectedPatientId} />
+            )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-gray-600">
+              Page {currentPage} of {totalPages}
+            </div>
+            <div className="flex gap-1">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+              >
+                Previous
+              </Button>
+              {Array.from({ length: Math.min(5, totalPages) }).map((_, index) => {
+                let pageNumber;
+                if (totalPages <= 5) {
+                  pageNumber = index + 1;
+                } else if (currentPage <= 3) {
+                  pageNumber = index + 1;
+                } else if (currentPage >= totalPages - 2) {
+                  pageNumber = totalPages - 4 + index;
+                } else {
+                  pageNumber = currentPage - 2 + index;
+                }
+                return (
+                  <Button
+                    key={pageNumber}
+                    variant={pageNumber === currentPage ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setCurrentPage(pageNumber)}
+                  >
+                    {pageNumber}
+                  </Button>
+                );
+              })}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                disabled={currentPage === totalPages}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { AlertTriangle, Thermometer, Heart, Activity, Wind, Ruler, Weight, Droplets } from "lucide-react";
+import { AlertTriangle, Thermometer, Heart, Activity, Wind, Ruler, Weight, Droplets, TrendingUp, TrendingDown } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -13,26 +12,49 @@ import {
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 
-// Dummy helpers (replace or import your real ones)
-const getStatusColor = (status: string) => {
-  switch (status) {
-    case "high":
-      return "bg-red-100 text-red-700 border-red-200";
-    case "normal":
-      return "bg-green-100 text-green-700 border-green-200";
-    case "low":
-      return "bg-yellow-100 text-yellow-700 border-yellow-200";
-    case "critical":
-      return "bg-red-200 text-red-800 border-red-300";
-    default:
-      return "bg-gray-100 text-gray-700 border-gray-200";
-  }
-};
+// Unified interface for vitals data
+export interface VitalsData {
+  id?: string;
+  height: string;
+  weight: string;
+  temperature: string;
+  pulse: string;
+  respiratoryRate: string;
+  bloodPressureSystolic: string;
+  bloodPressureDiastolic: string;
+  oxygenSaturation: string;
+  fbs: string;
+  rbs: string;
+  painScale: string;
+  bodymassindex: string;
+  comment?: string;
+  recordedAt?: string;
+  recordedBy?: string;
+}
 
-const getVitalStatus = (type: string, value: string): 'normal' | 'high' | 'low' | 'critical' => {
+export interface VitalRecord {
+  id: string;
+  patientName: string;
+  personalNumber: string;
+  date: string;
+  time: string;
+  vitals: VitalsData;
+  recordedBy: string;
+  alerts: string[];
+}
+
+interface ViewVitalsModalProps {
+  record: VitalRecord | null;
+  open: boolean;
+  onClose: () => void;
+}
+
+// Get vital status
+const getVitalStatus = (type: string, value: string | undefined): 'normal' | 'high' | 'low' | 'critical' => {
   if (!value || value === '') return 'normal';
   
   const numValue = parseFloat(value);
+  if (isNaN(numValue)) return 'normal'; // Handle invalid numbers
   
   switch (type) {
     case "bloodPressureSystolic":
@@ -83,13 +105,31 @@ const getVitalStatus = (type: string, value: string): 'normal' | 'high' | 'low' 
   }
 };
 
+// Get status color
+const getStatusColor = (status: string) => {
+  switch (status) {
+    case "high":
+      return "bg-orange-100 text-orange-700 border-orange-200";
+    case "normal":
+      return "bg-green-100 text-green-700 border-green-200";
+    case "low":
+      return "bg-yellow-100 text-yellow-700 border-yellow-200";
+    case "critical":
+      return "bg-red-100 text-red-700 border-red-200";
+    default:
+      return "bg-gray-100 text-gray-700 border-gray-200";
+  }
+};
+
+// Get status icon
 const getStatusIcon = (status: string) => {
-  if (status === "critical") return <AlertTriangle className="h-4 w-4 text-red-600" />;
-  if (status === "high") return <AlertTriangle className="h-4 w-4 text-orange-500" />;
-  if (status === "low") return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
+  if (status === "critical") return <AlertTriangle className="h-4 w-4" />;
+  if (status === "high") return <TrendingUp className="h-4 w-4" />;
+  if (status === "low") return <TrendingDown className="h-4 w-4" />;
   return null;
 };
 
+// Get BMI category
 const getBMICategory = (bmi: number): string => {
   if (bmi < 18.5) return 'Underweight';
   if (bmi < 25) return 'Normal weight';
@@ -97,50 +137,12 @@ const getBMICategory = (bmi: number): string => {
   return 'Obese';
 };
 
-// VitalsData interface - matches the VitalsForm
-interface VitalsData {
-  id?: string;
-  height: string;
-  weight: string;
-  temperature: string;
-  pulse: string;
-  respiratoryRate: string;
-  bloodPressureSystolic: string;
-  bloodPressureDiastolic: string;
-  oxygenSaturation: string;
-  fbs: string;
-  rbs: string;
-  painScale: string;
-  bodymassindex: string;
-  comment?: string;
-  recordedAt?: string;
-  recordedBy?: string;
-}
-
-interface VitalRecord {
-  id: string;
-  patientName: string;
-  personalNumber: string;
-  date: string;
-  time: string;
-  vitals: VitalsData;
-  recordedBy: string;
-  alerts: string[];
-}
-
-interface ViewVitalsModalProps {
-  record: VitalRecord | null;
-  open: boolean;
-  onClose: () => void;
-}
-
 export function ViewVitalsModal({ record, open, onClose }: ViewVitalsModalProps) {
   if (!record) return null;
-
   const { vitals } = record;
-  const bmi = parseFloat(vitals.bodymassindex) || null;
-
-  // Vital signs configuration - matches VitalsForm
+  const bmi = parseFloat(vitals.bodymassindex) || 0;
+  
+  // Vital signs configuration
   const vitalSigns = [
     {
       id: 'temperature',
@@ -148,7 +150,9 @@ export function ViewVitalsModal({ record, open, onClose }: ViewVitalsModalProps)
       unit: '°C',
       icon: <Thermometer className="h-4 w-4" />,
       value: vitals.temperature,
-      status: getVitalStatus('temperature', vitals.temperature)
+      status: getVitalStatus('temperature', vitals.temperature),
+      required: true,
+      placeholder: '36.5'
     },
     {
       id: 'bloodPressureSystolic',
@@ -156,7 +160,9 @@ export function ViewVitalsModal({ record, open, onClose }: ViewVitalsModalProps)
       unit: 'mmHg',
       icon: <Heart className="h-4 w-4" />,
       value: vitals.bloodPressureSystolic,
-      status: getVitalStatus('bloodPressureSystolic', vitals.bloodPressureSystolic)
+      status: getVitalStatus('bloodPressureSystolic', vitals.bloodPressureSystolic),
+      required: true,
+      placeholder: '120'
     },
     {
       id: 'bloodPressureDiastolic',
@@ -164,7 +170,9 @@ export function ViewVitalsModal({ record, open, onClose }: ViewVitalsModalProps)
       unit: 'mmHg',
       icon: <Heart className="h-4 w-4" />,
       value: vitals.bloodPressureDiastolic,
-      status: getVitalStatus('bloodPressureDiastolic', vitals.bloodPressureDiastolic)
+      status: getVitalStatus('bloodPressureDiastolic', vitals.bloodPressureDiastolic),
+      required: true,
+      placeholder: '80'
     },
     {
       id: 'pulse',
@@ -172,7 +180,9 @@ export function ViewVitalsModal({ record, open, onClose }: ViewVitalsModalProps)
       unit: 'bpm',
       icon: <Activity className="h-4 w-4" />,
       value: vitals.pulse,
-      status: getVitalStatus('pulse', vitals.pulse)
+      status: getVitalStatus('pulse', vitals.pulse),
+      required: true,
+      placeholder: '72'
     },
     {
       id: 'respiratoryRate',
@@ -180,7 +190,9 @@ export function ViewVitalsModal({ record, open, onClose }: ViewVitalsModalProps)
       unit: '/min',
       icon: <Wind className="h-4 w-4" />,
       value: vitals.respiratoryRate,
-      status: getVitalStatus('respiratoryRate', vitals.respiratoryRate)
+      status: getVitalStatus('respiratoryRate', vitals.respiratoryRate),
+      required: true,
+      placeholder: '16'
     },
     {
       id: 'oxygenSaturation',
@@ -188,7 +200,9 @@ export function ViewVitalsModal({ record, open, onClose }: ViewVitalsModalProps)
       unit: '%',
       icon: <Droplets className="h-4 w-4" />,
       value: vitals.oxygenSaturation,
-      status: getVitalStatus('oxygenSaturation', vitals.oxygenSaturation)
+      status: getVitalStatus('oxygenSaturation', vitals.oxygenSaturation),
+      required: false,
+      placeholder: '98'
     },
     {
       id: 'height',
@@ -196,7 +210,9 @@ export function ViewVitalsModal({ record, open, onClose }: ViewVitalsModalProps)
       unit: 'cm',
       icon: <Ruler className="h-4 w-4" />,
       value: vitals.height,
-      status: 'normal' as const
+      status: 'normal' as const,
+      required: false,
+      placeholder: '170'
     },
     {
       id: 'weight',
@@ -204,7 +220,9 @@ export function ViewVitalsModal({ record, open, onClose }: ViewVitalsModalProps)
       unit: 'kg',
       icon: <Weight className="h-4 w-4" />,
       value: vitals.weight,
-      status: 'normal' as const
+      status: 'normal' as const,
+      required: false,
+      placeholder: '70'
     },
     {
       id: 'fbs',
@@ -212,7 +230,9 @@ export function ViewVitalsModal({ record, open, onClose }: ViewVitalsModalProps)
       unit: 'mg/dL',
       icon: <Droplets className="h-4 w-4" />,
       value: vitals.fbs,
-      status: getVitalStatus('fbs', vitals.fbs)
+      status: getVitalStatus('fbs', vitals.fbs),
+      required: false,
+      placeholder: '90'
     },
     {
       id: 'rbs',
@@ -220,7 +240,9 @@ export function ViewVitalsModal({ record, open, onClose }: ViewVitalsModalProps)
       unit: 'mg/dL',
       icon: <Droplets className="h-4 w-4" />,
       value: vitals.rbs,
-      status: getVitalStatus('rbs', vitals.rbs)
+      status: getVitalStatus('rbs', vitals.rbs),
+      required: false,
+      placeholder: '120'
     },
     {
       id: 'painScale',
@@ -228,10 +250,12 @@ export function ViewVitalsModal({ record, open, onClose }: ViewVitalsModalProps)
       unit: '/10',
       icon: <AlertTriangle className="h-4 w-4" />,
       value: vitals.painScale,
-      status: getVitalStatus('painScale', vitals.painScale)
+      status: getVitalStatus('painScale', vitals.painScale),
+      required: false,
+      placeholder: '0'
     },
   ];
-
+  
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
@@ -242,7 +266,6 @@ export function ViewVitalsModal({ record, open, onClose }: ViewVitalsModalProps)
           </DialogTitle>
           <DialogClose />
         </DialogHeader>
-
         <div className="space-y-6 mt-4">
           {/* Patient Info Header */}
           <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
@@ -256,7 +279,6 @@ export function ViewVitalsModal({ record, open, onClose }: ViewVitalsModalProps)
               </p>
               <p className="text-xs text-gray-500">Recorded by: {record.recordedBy}</p>
             </div>
-
             {record.alerts.length > 0 && (
               <div className="flex items-start space-x-2">
                 <AlertTriangle className="h-5 w-5 text-red-500 mt-1" />
@@ -271,7 +293,7 @@ export function ViewVitalsModal({ record, open, onClose }: ViewVitalsModalProps)
               </div>
             )}
           </div>
-
+          
           {/* Vital Signs Grid */}
           <div className="space-y-4">
             <h4 className="text-md font-semibold text-gray-800">Vital Signs</h4>
@@ -296,7 +318,7 @@ export function ViewVitalsModal({ record, open, onClose }: ViewVitalsModalProps)
                 </div>
               ))}
             </div>
-
+            
             {/* BMI Display */}
             <div className="space-y-2">
               <Label className="flex items-center gap-2 text-sm font-medium">
@@ -307,14 +329,14 @@ export function ViewVitalsModal({ record, open, onClose }: ViewVitalsModalProps)
                 <p className="text-lg font-semibold text-gray-900">
                   {vitals.bodymassindex || "Not calculated"}
                 </p>
-                {bmi && (
+                {bmi > 0 && (
                   <p className="text-sm text-gray-500">
                     Category: {getBMICategory(bmi)}
                   </p>
                 )}
               </div>
             </div>
-
+            
             {/* Comments section */}
             {vitals.comment && (
               <div className="space-y-2">
@@ -328,7 +350,6 @@ export function ViewVitalsModal({ record, open, onClose }: ViewVitalsModalProps)
             )}
           </div>
         </div>
-
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
             Close

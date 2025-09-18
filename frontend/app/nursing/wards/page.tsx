@@ -13,8 +13,20 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
@@ -167,16 +179,20 @@ interface BloodGlucoseRecord {
 const WardManagement = () => {
   // State management
   const [selectedWard, setSelectedWard] = useState<"Male" | "Female">("Male");
-  const [selectedPatient, setSelectedPatient] = useState<WardPatient | null>(null);
+  const [selectedPatient, setSelectedPatient] = useState<WardPatient | null>(
+    null
+  );
   const [selectedBed, setSelectedBed] = useState<number | null>(null);
   const [showAdmitDialog, setShowAdmitDialog] = useState(false);
   const [showRecordDialog, setShowRecordDialog] = useState(false);
   const [recordType, setRecordType] = useState<string>("");
   const [showHistoryDialog, setShowHistoryDialog] = useState(false);
   const [historyType, setHistoryType] = useState<string>("");
-  const [expandedRecords, setExpandedRecords] = useState<{[key: string]: boolean}>({});
+  const [expandedRecords, setExpandedRecords] = useState<{
+    [key: string]: boolean;
+  }>({});
   const [currentPage, setCurrentPage] = useState(1);
-  
+
   // Mock data for wards
   const [maleWardPatients, setMaleWardPatients] = useState<WardPatient[]>([
     {
@@ -286,14 +302,16 @@ const WardManagement = () => {
     },
   ]);
 
-  const currentWardPatients = selectedWard === "Male" ? maleWardPatients : femaleWardPatients;
-  const setCurrentWardPatients = selectedWard === "Male" ? setMaleWardPatients : setFemaleWardPatients;
+  const currentWardPatients =
+    selectedWard === "Male" ? maleWardPatients : femaleWardPatients;
+  const setCurrentWardPatients =
+    selectedWard === "Male" ? setMaleWardPatients : setFemaleWardPatients;
 
   // Get bed occupancy
   const getBedsData = () => {
     const beds = Array.from({ length: 5 }, (_, i) => ({
       number: i + 1,
-      patient: currentWardPatients.find(p => p.bedNumber === i + 1) || null,
+      patient: currentWardPatients.find((p) => p.bedNumber === i + 1) || null,
     }));
     return beds;
   };
@@ -305,11 +323,16 @@ const WardManagement = () => {
   // Status colors
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "Stable": return "bg-green-100 text-green-800";
-      case "Critical": return "bg-red-100 text-red-800";
-      case "Recovering": return "bg-blue-100 text-blue-800";
-      case "Discharge Ready": return "bg-purple-100 text-purple-800";
-      default: return "bg-gray-100 text-gray-800";
+      case "Stable":
+        return "bg-green-100 text-green-800";
+      case "Critical":
+        return "bg-red-100 text-red-800";
+      case "Recovering":
+        return "bg-blue-100 text-blue-800";
+      case "Discharge Ready":
+        return "bg-purple-100 text-purple-800";
+      default:
+        return "bg-gray-100 text-gray-800";
     }
   };
 
@@ -321,7 +344,7 @@ const WardManagement = () => {
 
   // Handle record creation
   const handleAddRecord = (patientId: string, type: string) => {
-    const patient = currentWardPatients.find(p => p.id === patientId);
+    const patient = currentWardPatients.find((p) => p.id === patientId);
     setSelectedPatient(patient || null);
     setRecordType(type);
     setShowRecordDialog(true);
@@ -329,7 +352,7 @@ const WardManagement = () => {
 
   // Handle history viewing
   const handleViewHistory = (patientId: string, type: string) => {
-    const patient = currentWardPatients.find(p => p.id === patientId);
+    const patient = currentWardPatients.find((p) => p.id === patientId);
     setSelectedPatient(patient || null);
     setHistoryType(type);
     setShowHistoryDialog(true);
@@ -342,20 +365,22 @@ const WardManagement = () => {
     const newRecord = {
       ...data,
       id: Math.random().toString(36).substr(2, 9),
-      date: new Date().toISOString().split('T')[0],
-      time: new Date().toLocaleTimeString('en-US', { hour12: false }),
+      date: new Date().toISOString().split("T")[0],
+      time: new Date().toLocaleTimeString("en-US", { hour12: false }),
       recordedBy: "Current Nurse", // Replace with actual nurse
     };
 
-    setCurrentWardPatients(prev => 
-      prev.map(patient => 
-        patient.id === selectedPatient.id 
+    setCurrentWardPatients((prev) =>
+      prev.map((patient) =>
+        patient.id === selectedPatient.id
           ? {
               ...patient,
               [getRecordArrayName(recordType)]: [
-                ...patient[getRecordArrayName(recordType) as keyof WardPatient] as any[],
-                newRecord
-              ]
+                ...(patient[
+                  getRecordArrayName(recordType) as keyof WardPatient
+                ] as any[]),
+                newRecord,
+              ],
             }
           : patient
       )
@@ -368,21 +393,29 @@ const WardManagement = () => {
 
   const getRecordArrayName = (type: string) => {
     switch (type) {
-      case "treatment": return "treatmentSheet";
-      case "urine": return "urineMonitoring";
-      case "observation": return "observationChart";
-      case "fluid": return "fluidRecord";
-      case "glucose": return "glucoseRecord";
-      case "sliding": return "slidingScale";
-      case "blood-glucose": return "bloodGlucose";
-      default: return "treatmentSheet";
+      case "treatment":
+        return "treatmentSheet";
+      case "urine":
+        return "urineMonitoring";
+      case "observation":
+        return "observationChart";
+      case "fluid":
+        return "fluidRecord";
+      case "glucose":
+        return "glucoseRecord";
+      case "sliding":
+        return "slidingScale";
+      case "blood-glucose":
+        return "bloodGlucose";
+      default:
+        return "treatmentSheet";
     }
   };
 
   const toggleRecord = (recordId: string) => {
-    setExpandedRecords(prev => ({
+    setExpandedRecords((prev) => ({
       ...prev,
-      [recordId]: !prev[recordId]
+      [recordId]: !prev[recordId],
     }));
   };
 
@@ -392,7 +425,9 @@ const WardManagement = () => {
       <div className="flex flex-col md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-3xl font-bold">Ward Management</h1>
-          <p className="text-muted-foreground">Manage admitted patients and their medical records</p>
+          <p className="text-muted-foreground">
+            Manage admitted patients and their medical records
+          </p>
         </div>
         <Button variant="outline" size="sm">
           <RefreshCw className="h-4 w-4 mr-2" />
@@ -407,7 +442,9 @@ const WardManagement = () => {
             <CardTitle className="text-sm">Male Ward Occupancy</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{maleWardPatients.length}/5</div>
+            <div className="text-2xl font-bold">
+              {maleWardPatients.length}/5
+            </div>
             <p className="text-xs text-muted-foreground">beds occupied</p>
           </CardContent>
         </Card>
@@ -416,7 +453,9 @@ const WardManagement = () => {
             <CardTitle className="text-sm">Female Ward Occupancy</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{femaleWardPatients.length}/5</div>
+            <div className="text-2xl font-bold">
+              {femaleWardPatients.length}/5
+            </div>
             <p className="text-xs text-muted-foreground">beds occupied</p>
           </CardContent>
         </Card>
@@ -426,7 +465,11 @@ const WardManagement = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-red-600">
-              {[...maleWardPatients, ...femaleWardPatients].filter(p => p.status === "Critical").length}
+              {
+                [...maleWardPatients, ...femaleWardPatients].filter(
+                  (p) => p.status === "Critical"
+                ).length
+              }
             </div>
           </CardContent>
         </Card>
@@ -436,14 +479,21 @@ const WardManagement = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600">
-              {[...maleWardPatients, ...femaleWardPatients].filter(p => p.status === "Discharge Ready").length}
+              {
+                [...maleWardPatients, ...femaleWardPatients].filter(
+                  (p) => p.status === "Discharge Ready"
+                ).length
+              }
             </div>
           </CardContent>
         </Card>
       </div>
 
       {/* Ward Tabs */}
-      <Tabs value={selectedWard} onValueChange={(value) => setSelectedWard(value as "Male" | "Female")}>
+      <Tabs
+        value={selectedWard}
+        onValueChange={(value) => setSelectedWard(value as "Male" | "Female")}
+      >
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="Male" className="flex items-center gap-2">
             <Users className="h-4 w-4" />
@@ -467,22 +517,41 @@ const WardManagement = () => {
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
                 {bedsData.map((bed) => (
-                  <Card 
-                    key={bed.number} 
+                  <Card
+                    key={bed.number}
                     className={`cursor-pointer transition-all hover:shadow-md ${
-                      bed.patient ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'
+                      bed.patient
+                        ? "bg-blue-50 border-blue-200"
+                        : "bg-gray-50 border-gray-200"
                     }`}
-                    onClick={() => bed.patient ? setSelectedPatient(bed.patient) : handleAdmitPatient(bed.number)}
+                    onClick={() =>
+                      bed.patient
+                        ? setSelectedPatient(bed.patient)
+                        : handleAdmitPatient(bed.number)
+                    }
                   >
                     <CardContent className="p-4 text-center">
                       <div className="flex flex-col items-center space-y-2">
-                        <Bed className={`h-8 w-8 ${bed.patient ? 'text-blue-600' : 'text-gray-400'}`} />
-                        <div className="text-sm font-medium">Bed {bed.number}</div>
+                        <Bed
+                          className={`h-8 w-8 ${
+                            bed.patient ? "text-blue-600" : "text-gray-400"
+                          }`}
+                        />
+                        <div className="text-sm font-medium">
+                          Bed {bed.number}
+                        </div>
                         {bed.patient ? (
                           <div className="space-y-1">
-                            <div className="text-xs font-semibold">{bed.patient.name}</div>
-                            <div className="text-xs text-gray-600">{bed.patient.personalNumber}</div>
-                            <Badge className={getStatusColor(bed.patient.status)} variant="outline">
+                            <div className="text-xs font-semibold">
+                              {bed.patient.name}
+                            </div>
+                            <div className="text-xs text-gray-600">
+                              {bed.patient.personalNumber}
+                            </div>
+                            <Badge
+                              className={getStatusColor(bed.patient.status)}
+                              variant="outline"
+                            >
                               {bed.patient.status}
                             </Badge>
                           </div>
@@ -496,14 +565,18 @@ const WardManagement = () => {
                     </CardContent>
                   </Card>
                 ))}
-                
+
                 {/* Additional bed option */}
                 <Card className="cursor-pointer transition-all hover:shadow-md bg-yellow-50 border-yellow-200">
                   <CardContent className="p-4 text-center">
                     <div className="flex flex-col items-center space-y-2">
                       <Plus className="h-8 w-8 text-yellow-600" />
                       <div className="text-sm font-medium">Additional Bed</div>
-                      <Button size="sm" variant="outline" onClick={() => handleAdmitPatient(6)}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleAdmitPatient(6)}
+                      >
                         <UserPlus className="h-3 w-3 mr-1" />
                         Add Bed
                       </Button>
@@ -528,7 +601,8 @@ const WardManagement = () => {
                   </Badge>
                 </CardTitle>
                 <CardDescription>
-                  {selectedPatient.personalNumber} | Age: {selectedPatient.age} | Diagnosis: {selectedPatient.diagnosis}
+                  {selectedPatient.personalNumber} | Age: {selectedPatient.age}{" "}
+                  | Diagnosis: {selectedPatient.diagnosis}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -543,12 +617,21 @@ const WardManagement = () => {
                       <Card key={order.id} className="p-3">
                         <div className="flex justify-between items-start">
                           <div>
-                            <div className="font-medium">{order.description}</div>
+                            <div className="font-medium">
+                              {order.description}
+                            </div>
                             <div className="text-sm text-gray-600">
-                              {order.frequency} • {order.duration} • Ordered by {order.orderedBy}
+                              {order.frequency} • {order.duration} • Ordered by{" "}
+                              {order.orderedBy}
                             </div>
                           </div>
-                          <Badge variant={order.status === "Completed" ? "default" : "secondary"}>
+                          <Badge
+                            variant={
+                              order.status === "Completed"
+                                ? "default"
+                                : "secondary"
+                            }
+                          >
                             {order.status}
                           </Badge>
                         </div>
@@ -559,32 +642,36 @@ const WardManagement = () => {
 
                 {/* Quick Action Buttons */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <Button 
-                    variant="outline" 
-                    onClick={() => handleAddRecord(selectedPatient.id, "treatment")}
+                  <Button
+                    variant="outline"
+                    onClick={() =>
+                      handleAddRecord(selectedPatient.id, "treatment")
+                    }
                     className="flex items-center gap-2"
                   >
                     <FileText className="h-4 w-4" />
                     Treatment Sheet
                   </Button>
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     onClick={() => handleAddRecord(selectedPatient.id, "urine")}
                     className="flex items-center gap-2"
                   >
                     <Droplets className="h-4 w-4" />
                     Urine Monitor
                   </Button>
-                  <Button 
-                    variant="outline" 
-                    onClick={() => handleAddRecord(selectedPatient.id, "observation")}
+                  <Button
+                    variant="outline"
+                    onClick={() =>
+                      handleAddRecord(selectedPatient.id, "observation")
+                    }
                     className="flex items-center gap-2"
                   >
                     <Activity className="h-4 w-4" />
                     Observation Chart
                   </Button>
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     onClick={() => handleAddRecord(selectedPatient.id, "fluid")}
                     className="flex items-center gap-2"
                   >
@@ -594,25 +681,31 @@ const WardManagement = () => {
                 </div>
 
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  <Button 
-                    variant="outline" 
-                    onClick={() => handleAddRecord(selectedPatient.id, "glucose")}
+                  <Button
+                    variant="outline"
+                    onClick={() =>
+                      handleAddRecord(selectedPatient.id, "glucose")
+                    }
                     className="flex items-center gap-2"
                   >
                     <TrendingUp className="h-4 w-4" />
                     Glucose Record
                   </Button>
-                  <Button 
-                    variant="outline" 
-                    onClick={() => handleAddRecord(selectedPatient.id, "sliding")}
+                  <Button
+                    variant="outline"
+                    onClick={() =>
+                      handleAddRecord(selectedPatient.id, "sliding")
+                    }
                     className="flex items-center gap-2"
                   >
                     <Syringe className="h-4 w-4" />
                     Sliding Scale
                   </Button>
-                  <Button 
-                    variant="outline" 
-                    onClick={() => handleAddRecord(selectedPatient.id, "blood-glucose")}
+                  <Button
+                    variant="outline"
+                    onClick={() =>
+                      handleAddRecord(selectedPatient.id, "blood-glucose")
+                    }
                     className="flex items-center gap-2"
                   >
                     <Heart className="h-4 w-4" />
@@ -622,37 +715,45 @@ const WardManagement = () => {
 
                 {/* View History Buttons */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <Button 
+                  <Button
                     size="sm"
-                    variant="ghost" 
-                    onClick={() => handleViewHistory(selectedPatient.id, "treatment")}
+                    variant="ghost"
+                    onClick={() =>
+                      handleViewHistory(selectedPatient.id, "treatment")
+                    }
                     className="flex items-center gap-2"
                   >
                     <Eye className="h-4 w-4" />
                     Treatment History
                   </Button>
-                  <Button 
+                  <Button
                     size="sm"
-                    variant="ghost" 
-                    onClick={() => handleViewHistory(selectedPatient.id, "urine")}
+                    variant="ghost"
+                    onClick={() =>
+                      handleViewHistory(selectedPatient.id, "urine")
+                    }
                     className="flex items-center gap-2"
                   >
                     <Eye className="h-4 w-4" />
                     Urine History
                   </Button>
-                  <Button 
+                  <Button
                     size="sm"
-                    variant="ghost" 
-                    onClick={() => handleViewHistory(selectedPatient.id, "observation")}
+                    variant="ghost"
+                    onClick={() =>
+                      handleViewHistory(selectedPatient.id, "observation")
+                    }
                     className="flex items-center gap-2"
                   >
                     <Eye className="h-4 w-4" />
                     Observation History
                   </Button>
-                  <Button 
+                  <Button
                     size="sm"
-                    variant="ghost" 
-                    onClick={() => handleViewHistory(selectedPatient.id, "fluid")}
+                    variant="ghost"
+                    onClick={() =>
+                      handleViewHistory(selectedPatient.id, "fluid")
+                    }
                     className="flex items-center gap-2"
                   >
                     <Eye className="h-4 w-4" />
@@ -683,19 +784,32 @@ const WardManagement = () => {
       <Dialog open={showHistoryDialog} onOpenChange={setShowHistoryDialog}>
         <DialogContent className="max-w-5xl max-h-[85vh] overflow-hidden">
           <DialogHeader>
-            <DialogTitle>{getRecordTitle(historyType)} History - {selectedPatient?.name}</DialogTitle>
+            <DialogTitle>
+              {getRecordTitle(historyType)} History - {selectedPatient?.name}
+            </DialogTitle>
           </DialogHeader>
           <div className="overflow-y-auto pr-2" style={{ maxHeight: "65vh" }}>
-            {selectedPatient && renderHistoryContent(selectedPatient, historyType)}
+            {selectedPatient &&
+              renderHistoryContent(
+                selectedPatient,
+                historyType,
+                expandedRecords,
+                toggleRecord
+              )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowHistoryDialog(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setShowHistoryDialog(false)}
+            >
               Close
             </Button>
-            <Button onClick={() => {
-              setShowHistoryDialog(false);
-              handleAddRecord(selectedPatient?.id || "", historyType);
-            }}>
+            <Button
+              onClick={() => {
+                setShowHistoryDialog(false);
+                handleAddRecord(selectedPatient?.id || "", historyType);
+              }}
+            >
               <Plus className="h-4 w-4 mr-2" />
               Add New Record
             </Button>
@@ -709,8 +823,8 @@ const WardManagement = () => {
           <DialogHeader>
             <DialogTitle>Admit Patient to Bed {selectedBed}</DialogTitle>
           </DialogHeader>
-          <AdmitPatientForm 
-            bedNumber={selectedBed || 1} 
+          <AdmitPatientForm
+            bedNumber={selectedBed || 1}
             wardType={selectedWard}
             onSubmit={(patientData) => {
               const newPatient: WardPatient = {
@@ -727,7 +841,7 @@ const WardManagement = () => {
                 slidingScale: [],
                 bloodGlucose: [],
               };
-              setCurrentWardPatients(prev => [...prev, newPatient]);
+              setCurrentWardPatients((prev) => [...prev, newPatient]);
               setShowAdmitDialog(false);
               setSelectedBed(null);
             }}
@@ -741,14 +855,22 @@ const WardManagement = () => {
 // Helper function to get record title
 const getRecordTitle = (type: string) => {
   switch (type) {
-    case "treatment": return "Treatment Sheet";
-    case "urine": return "Urine Monitoring";
-    case "observation": return "Observation Chart";
-    case "fluid": return "Fluid Intake & Output";
-    case "glucose": return "Glucose Record";
-    case "sliding": return "Sliding Scale";
-    case "blood-glucose": return "Blood Glucose Record";
-    default: return "Record";
+    case "treatment":
+      return "Treatment Sheet";
+    case "urine":
+      return "Urine Monitoring";
+    case "observation":
+      return "Observation Chart";
+    case "fluid":
+      return "Fluid Intake & Output";
+    case "glucose":
+      return "Glucose Record";
+    case "sliding":
+      return "Sliding Scale";
+    case "blood-glucose":
+      return "Blood Glucose Record";
+    default:
+      return "Record";
   }
 };
 
@@ -925,14 +1047,14 @@ const ObservationForm = ({ onSubmit }: { onSubmit: (data: any) => void }) => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit({ 
-      temperature, 
-      pulse, 
-      respiratoryRate, 
-      bloodPressure, 
-      oxygenSaturation, 
-      consciousness, 
-      notes 
+    onSubmit({
+      temperature,
+      pulse,
+      respiratoryRate,
+      bloodPressure,
+      oxygenSaturation,
+      consciousness,
+      notes,
     });
   };
 
@@ -1038,8 +1160,15 @@ const FluidForm = ({ onSubmit }: { onSubmit: (data: any) => void }) => {
   const [otherOutput, setOtherOutput] = useState("");
 
   const calculateBalance = () => {
-    const totalIntake = (parseFloat(oral) || 0) + (parseFloat(iv) || 0) + (parseFloat(otherIntake) || 0);
-    const totalOutput = (parseFloat(urine) || 0) + (parseFloat(vomit) || 0) + (parseFloat(drainage) || 0) + (parseFloat(otherOutput) || 0);
+    const totalIntake =
+      (parseFloat(oral) || 0) +
+      (parseFloat(iv) || 0) +
+      (parseFloat(otherIntake) || 0);
+    const totalOutput =
+      (parseFloat(urine) || 0) +
+      (parseFloat(vomit) || 0) +
+      (parseFloat(drainage) || 0) +
+      (parseFloat(otherOutput) || 0);
     return (totalIntake - totalOutput).toString();
   };
 
@@ -1048,7 +1177,7 @@ const FluidForm = ({ onSubmit }: { onSubmit: (data: any) => void }) => {
     onSubmit({
       intake: { oral, iv, others: otherIntake },
       output: { urine, vomit, drainage, others: otherOutput },
-      balance: calculateBalance()
+      balance: calculateBalance(),
     });
   };
 
@@ -1089,7 +1218,7 @@ const FluidForm = ({ onSubmit }: { onSubmit: (data: any) => void }) => {
           </div>
         </div>
       </div>
-      
+
       <div>
         <h4 className="font-semibold text-red-700 mb-3">Fluid Output (mL)</h4>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -1185,7 +1314,9 @@ const GlucoseForm = ({ onSubmit }: { onSubmit: (data: any) => void }) => {
             <SelectContent>
               <SelectItem value="Finger stick">Finger stick</SelectItem>
               <SelectItem value="Lab">Lab</SelectItem>
-              <SelectItem value="Continuous monitor">Continuous monitor</SelectItem>
+              <SelectItem value="Continuous monitor">
+                Continuous monitor
+              </SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -1335,13 +1466,13 @@ const BloodGlucoseForm = ({ onSubmit }: { onSubmit: (data: any) => void }) => {
 };
 
 // Admit Patient Form
-const AdmitPatientForm = ({ 
-  bedNumber, 
-  wardType, 
-  onSubmit 
-}: { 
-  bedNumber: number; 
-  wardType: string; 
+const AdmitPatientForm = ({
+  bedNumber,
+  wardType,
+  onSubmit,
+}: {
+  bedNumber: number;
+  wardType: string;
   onSubmit: (data: any) => void;
 }) => {
   const [patientId, setPatientId] = useState("");
@@ -1360,9 +1491,9 @@ const AdmitPatientForm = ({
       age: parseInt(age),
       diagnosis,
       assignedNurse,
-      admissionDate: new Date().toISOString().split('T')[0],
-      admissionTime: new Date().toLocaleTimeString('en-US', { hour12: false }),
-      status: "Stable"
+      admissionDate: new Date().toISOString().split("T")[0],
+      admissionTime: new Date().toLocaleTimeString("en-US", { hour12: false }),
+      status: "Stable",
     });
   };
 
@@ -1444,40 +1575,60 @@ const AdmitPatientForm = ({
 };
 
 // History rendering function
-const renderHistoryContent = (patient: WardPatient, type: string) => {
+const renderHistoryContent = (
+  patient: WardPatient,
+  type: string,
+  expandedRecords: { [key: string]: boolean },
+  toggleRecord: (recordId: string) => void
+) => {
   const getRecords = () => {
     switch (type) {
-      case "treatment": return patient.treatmentSheet;
-      case "urine": return patient.urineMonitoring;
-      case "observation": return patient.observationChart;
-      case "fluid": return patient.fluidRecord;
-      case "glucose": return patient.glucoseRecord;
-      case "sliding": return patient.slidingScale;
-      case "blood-glucose": return patient.bloodGlucose;
-      default: return [];
+      case "treatment":
+        return patient.treatmentSheet;
+      case "urine":
+        return patient.urineMonitoring;
+      case "observation":
+        return patient.observationChart;
+      case "fluid":
+        return patient.fluidRecord;
+      case "glucose":
+        return patient.glucoseRecord;
+      case "sliding":
+        return patient.slidingScale;
+      case "blood-glucose":
+        return patient.bloodGlucose;
+      default:
+        return [];
     }
   };
 
   const records = getRecords();
-  
+
   if (records.length === 0) {
     return (
       <div className="text-center py-8">
         <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-        <p className="text-gray-500">No {getRecordTitle(type).toLowerCase()} records found</p>
+        <p className="text-gray-500">
+          No {getRecordTitle(type).toLowerCase()} records found
+        </p>
       </div>
     );
   }
 
   // Group records by date
-  const groupedRecords = records.reduce((acc: {[key: string]: any[]}, record) => {
-    const date = record.date;
-    if (!acc[date]) acc[date] = [];
-    acc[date].push(record);
-    return acc;
-  }, {});
+  const groupedRecords = records.reduce(
+    (acc: { [key: string]: any[] }, record) => {
+      const date = record.date;
+      if (!acc[date]) acc[date] = [];
+      acc[date].push(record);
+      return acc;
+    },
+    {}
+  );
 
-  const sortedDates = Object.keys(groupedRecords).sort((a, b) => b.localeCompare(a));
+  const sortedDates = Object.keys(groupedRecords).sort((a, b) =>
+    b.localeCompare(a)
+  );
 
   return (
     <div className="space-y-4">
@@ -1492,7 +1643,7 @@ const renderHistoryContent = (patient: WardPatient, type: string) => {
               .map((record) => {
                 const recordKey = `${record.date}_${record.time}_${record.id}`;
                 const isExpanded = expandedRecords[recordKey];
-                
+
                 return (
                   <div key={record.id} className="border rounded-md">
                     <div className="flex items-center justify-between p-3">
@@ -1507,15 +1658,12 @@ const renderHistoryContent = (patient: WardPatient, type: string) => {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => setExpandedRecords(prev => ({
-                          ...prev,
-                          [recordKey]: !prev[recordKey]
-                        }))}
+                        onClick={() => toggleRecord(recordKey)}
                       >
                         {isExpanded ? "▼ Hide" : "▶ Show"}
                       </Button>
                     </div>
-                    
+
                     {isExpanded && (
                       <div className="p-3 pt-0 bg-gray-50">
                         {renderRecordDetails(record, type)}
@@ -1534,14 +1682,22 @@ const renderHistoryContent = (patient: WardPatient, type: string) => {
 // Helper functions
 const getRecordSummary = (record: any, type: string) => {
   switch (type) {
-    case "treatment": return record.treatment;
-    case "urine": return `${record.volume}mL, ${record.color}`;
-    case "observation": return `T:${record.temperature}°C, P:${record.pulse}, BP:${record.bloodPressure}`;
-    case "fluid": return `Balance: ${record.balance}mL`;
-    case "glucose": return `${record.bloodGlucose}mg/dL (${record.method})`;
-    case "sliding": return `${record.bloodGlucose}mg/dL → ${record.insulinGiven}u ${record.insulinType}`;
-    case "blood-glucose": return `${record.value}mg/dL (${record.method})`;
-    default: return "Record";
+    case "treatment":
+      return record.treatment;
+    case "urine":
+      return `${record.volume}mL, ${record.color}`;
+    case "observation":
+      return `T:${record.temperature}°C, P:${record.pulse}, BP:${record.bloodPressure}`;
+    case "fluid":
+      return `Balance: ${record.balance}mL`;
+    case "glucose":
+      return `${record.bloodGlucose}mg/dL (${record.method})`;
+    case "sliding":
+      return `${record.bloodGlucose}mg/dL → ${record.insulinGiven}u ${record.insulinType}`;
+    case "blood-glucose":
+      return `${record.value}mg/dL (${record.method})`;
+    default:
+      return "Record";
   }
 };
 
@@ -1550,31 +1706,69 @@ const renderRecordDetails = (record: any, type: string) => {
     case "treatment":
       return (
         <div className="space-y-2">
-          <div><strong>Treatment:</strong> {record.treatment}</div>
-          <div><strong>Status:</strong> {record.status}</div>
-          {record.notes && <div><strong>Notes:</strong> {record.notes}</div>}
+          <div>
+            <strong>Treatment:</strong> {record.treatment}
+          </div>
+          <div>
+            <strong>Status:</strong> {record.status}
+          </div>
+          {record.notes && (
+            <div>
+              <strong>Notes:</strong> {record.notes}
+            </div>
+          )}
         </div>
       );
     case "urine":
       return (
         <div className="grid grid-cols-2 gap-4">
-          <div><strong>Volume:</strong> {record.volume} mL</div>
-          <div><strong>Color:</strong> {record.color}</div>
-          <div><strong>Clarity:</strong> {record.clarity}</div>
-          {record.specificGravity && <div><strong>Specific Gravity:</strong> {record.specificGravity}</div>}
-          {record.notes && <div className="col-span-2"><strong>Notes:</strong> {record.notes}</div>}
+          <div>
+            <strong>Volume:</strong> {record.volume} mL
+          </div>
+          <div>
+            <strong>Color:</strong> {record.color}
+          </div>
+          <div>
+            <strong>Clarity:</strong> {record.clarity}
+          </div>
+          {record.specificGravity && (
+            <div>
+              <strong>Specific Gravity:</strong> {record.specificGravity}
+            </div>
+          )}
+          {record.notes && (
+            <div className="col-span-2">
+              <strong>Notes:</strong> {record.notes}
+            </div>
+          )}
         </div>
       );
     case "observation":
       return (
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          <div><strong>Temperature:</strong> {record.temperature}°C</div>
-          <div><strong>Pulse:</strong> {record.pulse} bpm</div>
-          <div><strong>Respiratory Rate:</strong> {record.respiratoryRate}/min</div>
-          <div><strong>Blood Pressure:</strong> {record.bloodPressure}</div>
-          <div><strong>O2 Saturation:</strong> {record.oxygenSaturation}%</div>
-          <div><strong>Consciousness:</strong> {record.consciousness}</div>
-          {record.notes && <div className="col-span-full"><strong>Notes:</strong> {record.notes}</div>}
+          <div>
+            <strong>Temperature:</strong> {record.temperature}°C
+          </div>
+          <div>
+            <strong>Pulse:</strong> {record.pulse} bpm
+          </div>
+          <div>
+            <strong>Respiratory Rate:</strong> {record.respiratoryRate}/min
+          </div>
+          <div>
+            <strong>Blood Pressure:</strong> {record.bloodPressure}
+          </div>
+          <div>
+            <strong>O2 Saturation:</strong> {record.oxygenSaturation}%
+          </div>
+          <div>
+            <strong>Consciousness:</strong> {record.consciousness}
+          </div>
+          {record.notes && (
+            <div className="col-span-full">
+              <strong>Notes:</strong> {record.notes}
+            </div>
+          )}
         </div>
       );
     case "fluid":
@@ -1607,10 +1801,15 @@ const renderRecordDetails = (record: any, type: string) => {
     case "blood-glucose":
       return (
         <div className="grid grid-cols-2 gap-4">
-          {Object.entries(record).map(([key, value]) => 
-            key !== 'id' && key !== 'date' && key !== 'time' && key !== 'recordedBy' && value ? (
+          {Object.entries(record).map(([key, value]) =>
+            key !== "id" &&
+            key !== "date" &&
+            key !== "time" &&
+            key !== "recordedBy" &&
+            value ? (
               <div key={key}>
-                <strong>{key.charAt(0).toUpperCase() + key.slice(1)}:</strong> {value as string}
+                <strong>{key.charAt(0).toUpperCase() + key.slice(1)}:</strong>{" "}
+                {value as string}
               </div>
             ) : null
           )}

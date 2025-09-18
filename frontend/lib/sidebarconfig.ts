@@ -50,7 +50,6 @@ export const sidebarModules: SidebarModule[] = [
       { name: "Dashboard", href: "/medical-records/dashboard", icon: Home },
       { name: "Register Patient", href: "/medical-records/register-patient", icon: UserPlus },
       { name: "Manage Patient", href: "/medical-records/manage-patient", icon: Users },
-      { name: "Patient Overview", href: "/medical-records/patient-overview", icon: Users },
       { name: "Manage Dependents", href: "/medical-records/manage-dependents", icon: Users },
       { name: "Create Visit", href: "/medical-records/create-visit", icon: FilePlus },
       { name: "Manage Visit", href: "/medical-records/manage-visit", icon: FileText },

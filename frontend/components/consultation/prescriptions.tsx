@@ -149,6 +149,8 @@ const Prescriptions: React.FC<PrescriptionsProps> = ({ visitId }) => {
   const [drugInteractions, setDrugInteractions] = useState<DrugInteraction[]>([]);
   const [medicationSearch, setMedicationSearch] = useState('');
   const [showSuggestions, setShowSuggestions] = useState<number | null>(null);
+  // Added: State to track if we are editing an existing prescription
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const {
     control,
@@ -193,7 +195,7 @@ const Prescriptions: React.FC<PrescriptionsProps> = ({ visitId }) => {
         const drug1 = medications[i]?.name?.toLowerCase() || '';
         const drug2 = medications[j]?.name?.toLowerCase() || '';
         
-        // Check for known interactions (simplified example)
+        // Improved: Added more common dangerous interactions based on research (e.g., from WebMD, AAFP, etc.)
         if (drug1.includes('warfarin') && drug2.includes('aspirin')) {
           interactions.push({
             drug1: medications[i].name,
@@ -219,6 +221,76 @@ const Prescriptions: React.FC<PrescriptionsProps> = ({ visitId }) => {
             drug2: medications[j].name,
             severity: 'moderate',
             description: 'NSAIDs may reduce the effectiveness of ACE inhibitors/ARBs'
+          });
+        }
+
+        // Added: Warfarin + Ibuprofen (from multiple sources, increased bleeding)
+        if (drug1.includes('warfarin') && drug2.includes('ibuprofen')) {
+          interactions.push({
+            drug1: medications[i].name,
+            drug2: medications[j].name,
+            severity: 'major',
+            description: 'Increased risk of bleeding when combining warfarin with ibuprofen'
+          });
+        }
+
+        // Added: Digoxin + Amiodarone (from Crediblemeds, arrhythmias)
+        if (drug1.includes('digoxin') && drug2.includes('amiodarone')) {
+          interactions.push({
+            drug1: medications[i].name,
+            drug2: medications[j].name,
+            severity: 'major',
+            description: 'Increased digoxin levels leading to toxicity and arrhythmias'
+          });
+        }
+
+        // Added: Benzodiazepines + Opioids (from NIA, respiratory depression)
+        if (drug1.includes('benzodiazepine') && drug2.includes('opioid')) {
+          interactions.push({
+            drug1: medications[i].name,
+            drug2: medications[j].name,
+            severity: 'major',
+            description: 'Increased risk of respiratory depression and sedation'
+          });
+        }
+
+        // Added: Warfarin + Acetaminophen (from Muse Treatment, bleeding risk if high doses)
+        if (drug1.includes('warfarin') && drug2.includes('acetaminophen')) {
+          interactions.push({
+            drug1: medications[i].name,
+            drug2: medications[j].name,
+            severity: 'moderate',
+            description: 'May increase bleeding risk with high doses of acetaminophen'
+          });
+        }
+
+        // Added: Lithium + Loop Diuretics (from GoodRx, lithium toxicity)
+        if (drug1.includes('lithium') && drug2.includes('furosemide')) { // Example loop diuretic
+          interactions.push({
+            drug1: medications[i].name,
+            drug2: medications[j].name,
+            severity: 'major',
+            description: 'Increased risk of lithium toxicity due to reduced clearance'
+          });
+        }
+
+        // Added: MAOIs + SSRIs (from AAFP, serotonin syndrome)
+        if (drug1.includes('mao inhibitor') && drug2.includes('ssri')) {
+          interactions.push({
+            drug1: medications[i].name,
+            drug2: medications[j].name,
+            severity: 'major',
+            description: 'Risk of serotonin syndrome'
+          });
+        }
+
+        // Added: Theophylline + Quinolones (from AAFP, theophylline toxicity)
+        if (drug1.includes('theophylline') && drug2.includes('quinolone')) {
+          interactions.push({
+            drug1: medications[i].name,
+            drug2: medications[j].name,
+            severity: 'moderate',
+            description: 'Increased theophylline levels leading to toxicity'
           });
         }
       }
@@ -274,19 +346,39 @@ const Prescriptions: React.FC<PrescriptionsProps> = ({ visitId }) => {
   const onSubmit = async (data: PrescriptionForm) => {
     setIsSending(true);
     try {
-      const newPrescription: Prescription = {
-        id: `rx-${Date.now()}`,
-        medications: data.medications.map((med, index) => ({
-          ...med,
-          id: index.toString()
-        })),
-        prescribedAt: new Date().toLocaleString(),
-        status: 'pending',
-        pharmacist: 'Not assigned',
-        notes: data.prescriptionNotes || ''
-      };
+      // Added: Handle editing existing prescription
+      if (editingId) {
+        setExistingPrescriptions(prev => prev.map(p => 
+          p.id === editingId 
+            ? { 
+                ...p, 
+                medications: data.medications.map((med, index) => ({
+                  ...med,
+                  id: index.toString()
+                })),
+                notes: data.prescriptionNotes || '',
+                prescribedAt: new Date().toLocaleString(),
+                status: 'pending' // Reset to pending after resend
+              } 
+            : p
+        ));
+        setEditingId(null);
+      } else {
+        const newPrescription: Prescription = {
+          id: `rx-${Date.now()}`,
+          medications: data.medications.map((med, index) => ({
+            ...med,
+            id: index.toString()
+          })),
+          prescribedAt: new Date().toLocaleString(),
+          status: 'pending',
+          pharmacist: 'Not assigned',
+          notes: data.prescriptionNotes || ''
+        };
 
-      setExistingPrescriptions(prev => [newPrescription, ...prev]);
+        setExistingPrescriptions(prev => [newPrescription, ...prev]);
+      }
+
       reset();
       
       console.log('Prescription sent to pharmacy successfully');
@@ -295,6 +387,24 @@ const Prescriptions: React.FC<PrescriptionsProps> = ({ visitId }) => {
     } finally {
       setIsSending(false);
     }
+  };
+
+  // Added: Function to handle canceling a prescription
+  const handleCancel = (id: string) => {
+    if (confirm('Are you sure you want to cancel this prescription?')) {
+      setExistingPrescriptions(prev => prev.map(p => 
+        p.id === id ? { ...p, status: 'cancelled' } : p
+      ));
+    }
+  };
+
+  // Added: Function to handle modifying a prescription
+  const handleModify = (prescription: Prescription) => {
+    setEditingId(prescription.id);
+    reset({
+      medications: prescription.medications.map(med => ({ ...med })),
+      prescriptionNotes: prescription.notes
+    });
   };
 
   const getSuggestedMedications = (searchTerm: string) => {
@@ -330,9 +440,10 @@ const Prescriptions: React.FC<PrescriptionsProps> = ({ visitId }) => {
       {/* New Prescription */}
       <Card>
         <CardHeader>
+          {/* Modified: Change title based on editing mode */}
           <CardTitle className="flex items-center gap-2">
             <Pill className="h-5 w-5" />
-            Create Prescription
+            {editingId ? 'Edit Prescription' : 'Create Prescription'}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -649,7 +760,7 @@ const Prescriptions: React.FC<PrescriptionsProps> = ({ visitId }) => {
                 ) : (
                   <>
                     <Send className="mr-2 h-4 w-4" />
-                    Send to Pharmacy
+                    {editingId ? 'Resend to Pharmacy' : 'Send to Pharmacy'}
                   </>
                 )}
               </Button>
@@ -738,10 +849,10 @@ const Prescriptions: React.FC<PrescriptionsProps> = ({ visitId }) => {
                   <div className="flex gap-2 pt-2 border-t">
                     {prescription.status === 'pending' && (
                       <>
-                        <Button variant="outline" size="sm">
+                        <Button variant="outline" size="sm" onClick={() => handleCancel(prescription.id)}>
                           Cancel Prescription
                         </Button>
-                        <Button variant="outline" size="sm">
+                        <Button variant="outline" size="sm" onClick={() => handleModify(prescription)}>
                           Modify
                         </Button>
                       </>
@@ -751,9 +862,6 @@ const Prescriptions: React.FC<PrescriptionsProps> = ({ visitId }) => {
                         View Dispensing Details
                       </Button>
                     )}
-                    <Button variant="ghost" size="sm">
-                      Print Prescription
-                    </Button>
                   </div>
                 </div>
               ))

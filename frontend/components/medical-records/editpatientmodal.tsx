@@ -1,27 +1,11 @@
-// EditPatientModalContent.tsx 
 "use client";
-
 import React, { useMemo, useState, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Select, SelectItem, SelectTrigger, SelectValue, SelectContent } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/lib/toast";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { CheckCircle, AlertCircle, Search, User, Briefcase, Mail, Phone, MapPin, Heart, Users } from "lucide-react";
-
-import {
-  nameTitles,
-  locations,
-  divisions,
-  employeeTypes,       // ["Staff", "Officer", ...]
-  maritalStatuses,
-  genders,
-  bloodGroups,
-  genotypes,
-  nokRelationships,
-  nigerianStates
-} from "@/lib/constants";
+import { Search, User, X } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Separator } from "@/components/ui/separator";
@@ -36,9 +20,21 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-/* -------------------------
-   Types
-------------------------- */
+// Import shared constants
+import {
+  nameTitles,
+  locations,
+  divisions,
+  employeeTypes,
+  maritalStatuses,
+  genders,
+  bloodGroups,
+  genotypes,
+  nokRelationships,
+  nigerianStates,
+  nonnpaCategories,
+} from "@/lib/constants";
+
 type EmployeeCategory = "Employee" | "Retiree" | "NonNPA" | "Dependent";
 
 interface NextOfKin {
@@ -50,68 +46,39 @@ interface NextOfKin {
 }
 
 interface Patient {
-  // category + dependent subtype
+  id: string;
+  patient_id: string;
   employeeCategory: EmployeeCategory;
   dependentType?: "Employee Dependent" | "Retiree Dependent" | "";
-
-  // search / linking numbers
-  searchNumber: string;       // only used by Employee (search box)
-  personalNumber: string;     // Employee & Retiree (manual or populated); Dependent uses this as Sponsor PN
-
-  // personal core
+  searchNumber: string;
+  personalNumber: string;
+  sponsorId?: string;
   title: string;
   surname: string;
   firstName: string;
   lastName: string;
-
-  // employee-only work fields
-  type: string;               // Staff | Officer (employeeTypes)
+  type: string;
   division: string;
   location: string;
-
-  // shared "work & personal information"
   maritalStatus: string;
   gender: string;
   dateOfBirth: string;
   age: string;
-
-  // contact (shared)
   email: string;
   phone: string;
   address: string;
-  residentialAddress: string; // Current residential address
-  stateOfResidence: string;   // State of residence
-  permanentAddress: string;   // Permanent home address
-  stateOfOrigin: string;      // State of origin
-  localgovernmentarea: string; // Local Government Area
-
-  // medical (shared)
+  residentialAddress: string;
+  stateOfResidence: string;
+  permanentAddress: string;
+  stateOfOrigin: string;
+  localGovernmentArea: string;
   bloodGroup: string;
   genotype: string;
-
-  // non-npa
-  nonnpaType: string;         // Police | IT | NYSC | CSR | MD Outfit | Board Member | Seaview
-
-  // NOK (shared)
+  nonnpaType: string;
   nextOfKin: NextOfKin;
+  relationship?: string;
 }
 
-/* -------------------------
-   Non-NPA types (per your note)
-------------------------- */
-const NON_NPA_TYPES = [
-  "Police",
-  "IT",
-  "NYSC",
-  "CSR",
-  "MD Outfit",
-  "Board Member",
-  "Seaview",
-];
-
-/* -------------------------
-   Helpers / initial state
-------------------------- */
 const EMPTY_NOK: NextOfKin = {
   firstName: "",
   lastName: "",
@@ -121,25 +88,24 @@ const EMPTY_NOK: NextOfKin = {
 };
 
 const makeEmptyPatient = (category: EmployeeCategory): Patient => ({
+  id: "",
+  patient_id: "",
   employeeCategory: category,
   dependentType: "",
   searchNumber: "",
   personalNumber: "",
-
+  sponsorId: "",
   title: "",
   surname: "",
   firstName: "",
   lastName: "",
-
   type: "",
   division: "",
   location: "",
-
   maritalStatus: "",
   gender: "",
   dateOfBirth: "",
   age: "",
-
   email: "",
   phone: "",
   address: "",
@@ -147,21 +113,18 @@ const makeEmptyPatient = (category: EmployeeCategory): Patient => ({
   stateOfResidence: "",
   permanentAddress: "",
   stateOfOrigin: "",
-  localgovernmentarea: "",
-
+  localGovernmentArea: "",
   bloodGroup: "",
   genotype: "",
-
   nonnpaType: "",
-
   nextOfKin: { ...EMPTY_NOK },
+  relationship: category === "Dependent" ? "" : undefined,
 });
 
-// safer age calc
 const calculateAge = (dob: string) => {
   if (!dob) return "";
   const d = new Date(dob);
-  if (Number.isNaN(d.getTime())) return "";
+  if (isNaN(d.getTime())) return "";
   const today = new Date();
   let age = today.getFullYear() - d.getFullYear();
   const m = today.getMonth() - d.getMonth();
@@ -169,50 +132,8 @@ const calculateAge = (dob: string) => {
   return String(age);
 };
 
-// Mock fetch full patient
-const fetchPatientData = async (id: number): Promise<Patient> => {
-  // Simulate API
-  await new Promise((resolve) => setTimeout(resolve, 500));
-  return {
-    employeeCategory: "Employee",
-    dependentType: "",
-    searchNumber: "",
-    personalNumber: "EMP001",
-    title: "Mr.",
-    surname: "Doe",
-    firstName: "John",
-    lastName: "A",
-    type: "Staff",
-    division: "ICT",
-    location: "Headquarters",
-    maritalStatus: "Married",
-    gender: "Male",
-    dateOfBirth: "1980-01-01",
-    age: calculateAge("1980-01-01"),
-    email: "john.doe@example.com",
-    phone: "+1234567890",
-    address: "123 Street",
-    residentialAddress: "456 Ave",
-    stateOfResidence: "Lagos",
-    permanentAddress: "789 Blvd",
-    stateOfOrigin: "Ogun",
-    localgovernmentarea: "Ikeja",
-    bloodGroup: "O+",
-    genotype: "AA",
-    nonnpaType: "",
-    nextOfKin: {
-      firstName: "Jane",
-      lastName: "Doe",
-      relationship: "Spouse",
-      address: "123 Street",
-      phone: "+0987654321",
-    },
-  };
-};
-
-export default function EditPatientModalContent({ patientId }: { patientId: number }) {
+export default function EditPatientModalContent({ patientId, onClose }: { patientId: string; onClose: () => void }) {
   const { toast } = useToast();
-
   const [loading, setLoading] = useState(true);
   const [category, setCategory] = useState<EmployeeCategory>("Employee");
   const [pendingCategory, setPendingCategory] = useState<EmployeeCategory | null>(null);
@@ -222,20 +143,82 @@ export default function EditPatientModalContent({ patientId }: { patientId: numb
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [showErrorDialog, setShowErrorDialog] = useState(false);
   const [dialogMessage, setDialogMessage] = useState("");
+  const [photo, setPhoto] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
 
+  // Fetch patient data on mount
   useEffect(() => {
     const loadPatient = async () => {
+      setLoading(true);
       try {
-        const data = await fetchPatientData(patientId);
-        setCategory(data.employeeCategory);
-        setPatient(data);
-      } catch (err) {
-        setDialogMessage("Failed to load patient data.");
+        const res = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/patients/${patientId}/`,
+          {
+            headers: {
+              "Content-Type": "application/json",
+            },
+          }
+        );
+        
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || "Failed to load patient data.");
+        }
+        
+        const data = await res.json();
+        setCategory(data.patient_type);
+        setPatient({
+          ...makeEmptyPatient(data.patient_type),
+          id: data.id,
+          patient_id: data.patient_id,
+          employeeCategory: data.patient_type,
+          dependentType: data.dependent_type,
+          personalNumber: data.personal_number || data.sponsor?.personal_number || "",
+          sponsorId: data.sponsor?.id || "",
+          title: data.title || "",
+          surname: data.surname || "",
+          firstName: data.first_name || "",
+          lastName: data.last_name || "",
+          type: data.type || "",
+          division: data.division || "",
+          location: data.location || "",
+          maritalStatus: data.marital_status || "",
+          gender: data.gender || "",
+          dateOfBirth: data.date_of_birth || "",
+          age: calculateAge(data.date_of_birth || ""),
+          email: data.email || "",
+          phone: data.phone || "",
+          address: data.address || "",
+          residentialAddress: data.residential_address || "",
+          stateOfResidence: data.state_of_residence || "",
+          permanentAddress: data.permanent_address || "",
+          stateOfOrigin: data.state_of_origin || "",
+          localGovernmentArea: data.local_government_area || "",
+          bloodGroup: data.blood_group || "",
+          genotype: data.genotype || "",
+          nonnpaType: data.non_npa_type || "",
+          relationship: data.relationship || "",
+          nextOfKin: {
+            firstName: data.next_of_kin?.first_name || data.nok_first_name || "",
+            lastName: data.next_of_kin?.last_name || data.nok_last_name || "",
+            relationship: data.next_of_kin?.relationship || data.nok_relationship || "",
+            address: data.next_of_kin?.address || data.nok_address || "",
+            phone: data.next_of_kin?.phone || data.nok_phone || "",
+          },
+        });
+        
+        if (data.photo) {
+          setPhotoPreview(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}${data.photo}`);
+        }
+      } catch (err: any) {
+        setDialogMessage(err.message || "Failed to load patient data. Please try again.");
         setShowErrorDialog(true);
+        console.error(err);
       } finally {
         setLoading(false);
       }
     };
+    
     loadPatient();
   }, [patientId]);
 
@@ -265,6 +248,8 @@ export default function EditPatientModalContent({ patientId }: { patientId: numb
     if (pendingCategory) {
       setCategory(pendingCategory);
       setPatient(makeEmptyPatient(pendingCategory));
+      setPhoto(null);
+      setPhotoPreview(null);
       setPendingCategory(null);
       setShowSwitchConfirm(false);
       toast({ title: "Category Switched", description: `Switched to ${pendingCategory} category. Fields reset.` });
@@ -276,203 +261,233 @@ export default function EditPatientModalContent({ patientId }: { patientId: numb
     setShowSwitchConfirm(false);
   };
 
-  /* -------------------------
-     Derived UI flags
-  ------------------------- */
-  const showEmployeeSearch = category === "Employee";
-  const showPersonalNumber =
-    category === "Employee" || category === "Retiree" || category === "Dependent"; // Dependent = Sponsor PN
-  const showEmployeeWorkFields = category === "Employee";
-  const showNonNpaType = category === "NonNPA";
-  const isDependent = category === "Dependent";
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setPhoto(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPhotoPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
-  const personalNumberLabel = useMemo(() => {
-    if (category === "Dependent") return "Sponsor Personal Number";
-    return "Personal Number";
-  }, [category]);
+  const removePhoto = () => {
+    setPhoto(null);
+    setPhotoPreview(null);
+  };
 
-  /* -------------------------
-     Mock search (Employee only)
-  ------------------------- */
-  const handleSearch = () => {
+  const handleSearch = async () => {
     if (!patient.searchNumber.trim()) {
       setDialogMessage("Enter a personal number to search.");
       setShowErrorDialog(true);
       return;
     }
-
-    // Mock result
-    toast({ title: "Success", description: "Mock search populated." });
-    setPatient((prev) => ({
-      ...prev,
-      personalNumber: prev.searchNumber,
-      surname: "Doe",
-      firstName: "John",
-      lastName: "Smith",
-      division: divisions[0] ?? "",
-      location: locations[0] ?? "",
-      email: "john.smith@example.com",
-      address: "123 Main Street",
-    }));
+    
+    setIsSubmitting(true);
+    try {
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/patients/search/?q=${patient.searchNumber}`,
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Search failed");
+      }
+      
+      const data = await res.json();
+      
+      // Only employees can be searched
+      if (data.patient_type !== "Employee") {
+        throw new Error("Only Employee records can be searched.");
+      }
+      
+      updatePatient("sponsorId", data.id);
+      updatePatient("personalNumber", data.personal_number || "");
+      updatePatient("surname", data.surname || "");
+      updatePatient("firstName", data.first_name || "");
+      updatePatient("lastName", data.last_name || "");
+      updatePatient("division", data.division || "");
+      updatePatient("location", data.location || "");
+      updatePatient("email", data.email || "");
+      updatePatient("address", data.address || "");
+      
+      toast({ title: "Success", description: "Employee found and fields populated." });
+    } catch (err: any) {
+      setDialogMessage(err.message || "Employee not found or error occurred.");
+      setShowErrorDialog(true);
+      console.error(err);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  /* -------------------------
-     Validation (light, client-side)
-  ------------------------- */
   const validate = (): { ok: boolean; message?: string } => {
-    // core names
     if (!patient.surname.trim() || !patient.firstName.trim()) {
       return { ok: false, message: "Please provide Surname and First Name." };
     }
-
-    // Employee & Retiree require PN; Dependent requires Sponsor PN
-    if ((category === "Employee" || category === "Retiree" || category === "Dependent") && !patient.personalNumber.trim()) {
-      return { ok: false, message: `${personalNumberLabel} is required.` };
+    
+    if ((category === "Employee" || category === "Retiree") && !patient.personalNumber.trim()) {
+      return { ok: false, message: "Personal Number is required." };
     }
-
-    // Dependent subtype
-    if (isDependent && !patient.dependentType) {
-      return { ok: false, message: "Please select Dependent Type." };
+    
+    if (category === "Dependent") {
+      if (!patient.sponsorId) {
+        return { ok: false, message: "Please search for a sponsor first." };
+      }
+      if (!patient.dependentType) {
+        return { ok: false, message: "Please select Dependent Type." };
+      }
+      if (!patient.relationship) {
+        return { ok: false, message: "Please select Relationship." };
+      }
     }
-
-    // Employee work fields
-    if (showEmployeeWorkFields) {
+    
+    if (category === "Employee") {
       if (!patient.type || !patient.division || !patient.location) {
         return { ok: false, message: "Type, Division, and Location are required for Employees." };
       }
     }
-
-    // Non-NPA: require category
-    if (showNonNpaType && !patient.nonnpaType) {
+    
+    if (category === "NonNPA" && !patient.nonnpaType) {
       return { ok: false, message: "Please select a Non-NPA Category." };
     }
-
-    // Email format (optional)
+    
     if (patient.email && !/^\S+@\S+\.\S+$/.test(patient.email)) {
       return { ok: false, message: "Please enter a valid email." };
     }
-
+    
+    if (photo && !["image/jpeg", "image/png"].includes(photo.type)) {
+      return { ok: false, message: "Photo must be a JPEG or PNG image." };
+    }
+    
     return { ok: true };
   };
 
-  /* -------------------------
-     Submit (JSON style like your second file)
-  ------------------------- */
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
-
     const v = validate();
     if (!v.ok) {
-      setDialogMessage(v.message);
+      setDialogMessage(v.message || "");
       setShowErrorDialog(true);
       return;
     }
-
+    
     setIsSubmitting(true);
-
     try {
-      const baseURL = "/api/registry";
-      let endpoint = "";
-      const payload: Record<string, unknown> = {
-        // common
-        employee_category: category,
-        title: patient.title,
-        surname: patient.surname,
-        first_name: patient.firstName,
-        last_name: patient.lastName,
-        marital_status: patient.maritalStatus,
-        gender: patient.gender,
-        date_of_birth: patient.dateOfBirth,
-        age: patient.age,
-        email: patient.email,
-        phone: patient.phone,
-        address: patient.address,
-        blood_group: patient.bloodGroup,
-        genotype: patient.genotype,
-        // NOK
-        nok_first_name: patient.nextOfKin.firstName,
-        nok_last_name: patient.nextOfKin.lastName,
-        nok_relationship: patient.nextOfKin.relationship,
-        nok_address: patient.nextOfKin.address,
-        nok_phone: patient.nextOfKin.phone,
-      };
-
+      const baseURL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const endpoint = `${baseURL}/api/patients/${patientId}/`;
+      const formData = new FormData();
+      
+      // Add common fields
+      formData.append("title", patient.title);
+      formData.append("surname", patient.surname);
+      formData.append("first_name", patient.firstName);
+      formData.append("last_name", patient.lastName);
+      formData.append("marital_status", patient.maritalStatus);
+      formData.append("gender", patient.gender);
+      formData.append("date_of_birth", patient.dateOfBirth);
+      formData.append("email", patient.email);
+      formData.append("phone", patient.phone);
+      formData.append("address", patient.address);
+      formData.append("residential_address", patient.residentialAddress);
+      formData.append("state_of_residence", patient.stateOfResidence);
+      formData.append("permanent_address", patient.permanentAddress);
+      formData.append("state_of_origin", patient.stateOfOrigin);
+      formData.append("local_government_area", patient.localGovernmentArea);
+      formData.append("blood_group", patient.bloodGroup);
+      formData.append("genotype", patient.genotype);
+      formData.append("nok_first_name", patient.nextOfKin.firstName);
+      formData.append("nok_last_name", patient.nextOfKin.lastName);
+      formData.append("nok_relationship", patient.nextOfKin.relationship);
+      formData.append("nok_address", patient.nextOfKin.address);
+      formData.append("nok_phone", patient.nextOfKin.phone);
+      
+      if (photo) formData.append("photo", photo);
+      
+      // Add category-specific fields
       if (category === "Employee") {
-        endpoint = `${baseURL}/employees/${patientId}`;
-        payload.personal_number = patient.personalNumber;
-        payload.type = patient.type;
-        payload.division = patient.division;
-        payload.location = patient.location;
+        formData.append("personal_number", patient.personalNumber);
+        formData.append("type", patient.type);
+        formData.append("division", patient.division);
+        formData.append("location", patient.location);
       } else if (category === "Retiree") {
-        endpoint = `${baseURL}/retirees/${patientId}`;
-        payload.personal_number = patient.personalNumber;
+        formData.append("personal_number", patient.personalNumber);
       } else if (category === "Dependent") {
-        if (patient.dependentType === "Employee Dependent") {
-          endpoint = `${baseURL}/employee-dependents/${patientId}?sponsor_type=employee`;
-        } else if (patient.dependentType === "Retiree Dependent") {
-          endpoint = `${baseURL}/retiree-dependents/${patientId}?sponsor_type=retiree`;
-        } else {
-          throw new Error("Dependent type missing.");
+        if (patient.sponsorId) {
+          formData.append("sponsor_id", patient.sponsorId);
         }
-        payload.sponsor_personal_number = patient.personalNumber;
-        payload.dependent_type = patient.dependentType;
+        formData.append("dependent_type", patient.dependentType || "");
+        formData.append("relationship", patient.relationship || "");
       } else if (category === "NonNPA") {
-        endpoint = `${baseURL}/nonnpas/${patientId}`;
-        payload.non_npa_type = patient.nonnpaType;
-      } else {
-        throw new Error("Invalid category.");
+        formData.append("non_npa_type", patient.nonnpaType);
       }
-
+      
       const res = await fetch(endpoint, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        method: "PUT", // Changed from PATCH to PUT to match backend
+        headers: {},
+        body: formData,
       });
-
+      
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         console.error("Update failed:", err);
-        setDialogMessage("Update failed. Check console.");
+        setDialogMessage(err.detail || "Failed to update patient data.");
         setShowErrorDialog(true);
         return;
       }
-
+      
       await res.json().catch(() => null);
       setDialogMessage("Patient updated successfully!");
       setShowSuccessDialog(true);
-    } catch (err) {
+      setPhoto(null);
+      setPhotoPreview(null);
+      onClose();
+    } catch (err: any) {
       console.error(err);
-      setDialogMessage("Unexpected error occurred.");
+      setDialogMessage(err.message || "Unexpected error occurred. Please try again.");
       setShowErrorDialog(true);
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  const showEmployeeSearch = category === "Employee";
+  const showPersonalNumber = category === "Employee" || category === "Retiree";
+  const showEmployeeWorkFields = category === "Employee";
+  const showNonNpaType = category === "NonNPA";
+  const isDependent = category === "Dependent";
+  const personalNumberLabel = useMemo(() => {
+    if (category === "Dependent") return "Sponsor Personal Number";
+    return "Personal Number";
+  }, [category]);
+
   if (loading) {
     return (
       <Card className="max-w-6xl mx-auto shadow-xl">
-        <CardContent className="p-6">
-          <div className="flex items-center justify-center py-8">
-            <div className="text-lg">Loading patient data...</div>
-          </div>
+        <CardContent className="p-6 flex items-center justify-center py-8">
+          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-900 mr-2" />
+          <div className="text-lg">Loading patient data...</div>
         </CardContent>
       </Card>
     );
   }
 
-  /* -------------------------
-     Render
-  ------------------------- */
   return (
     <Card className="max-w-6xl mx-auto shadow-xl">
-      <CardHeader className="bg-gradient-to-r text-gray rounded-t-lg">
+      <CardHeader className="rounded-t-lg">
         <CardTitle className="text-3xl font-bold flex items-center gap-2">
-          <User className="h-8 w-8" />
+          <User className="h-8 w-8 text-blue-500" />
           Edit Patient
         </CardTitle>
       </CardHeader>
-      <CardContent className="p-6">
+      <CardContent className="p-6 space-y-8">
         <form onSubmit={handleSubmit} className="space-y-8">
           {/* Category Selection */}
           <div>
@@ -495,10 +510,9 @@ export default function EditPatientModalContent({ patientId }: { patientId: numb
               ))}
             </ToggleGroup>
           </div>
-
           <Separator />
-
-          {/* Employee Search (Employee only) */}
+          
+          {/* Employee Search Section */}
           {showEmployeeSearch && (
             <Card>
               <CardHeader className="pb-4">
@@ -514,13 +528,20 @@ export default function EditPatientModalContent({ patientId }: { patientId: numb
                     onChange={(e) => updatePatient("searchNumber", e.target.value)}
                     placeholder="Enter personal number"
                   />
-                  <Button type="button" onClick={handleSearch}>Search</Button>
+                  <Button
+                    type="button"
+                    onClick={handleSearch}
+                    disabled={isSubmitting}
+                    className="bg-gray-900 hover:bg-gray-900 text-white"
+                  >
+                    {isSubmitting ? "Searching..." : "Search"}
+                  </Button>
                 </div>
               </CardContent>
             </Card>
           )}
-
-          {/* Personal Details */}
+          
+          {/* Personal Details Section */}
           <Card>
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
@@ -529,7 +550,6 @@ export default function EditPatientModalContent({ patientId }: { patientId: numb
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Personal Number (Employee, Retiree, Dependent) */}
               {showPersonalNumber && (
                 <div>
                   <Label>{personalNumberLabel}</Label>
@@ -537,15 +557,18 @@ export default function EditPatientModalContent({ patientId }: { patientId: numb
                     value={patient.personalNumber}
                     onChange={(e) => updatePatient("personalNumber", e.target.value)}
                     placeholder={personalNumberLabel}
+                    readOnly={category === "Dependent"}
                   />
                 </div>
               )}
-
+              
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div>
                   <Label>Title</Label>
                   <Select value={patient.title} onValueChange={(v) => updatePatient("title", v)}>
-                    <SelectTrigger><SelectValue placeholder="Select title" /></SelectTrigger>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select title" />
+                    </SelectTrigger>
                     <SelectContent>
                       {nameTitles.map((t) => (
                         <SelectItem key={t} value={t}>{t}</SelectItem>
@@ -553,6 +576,7 @@ export default function EditPatientModalContent({ patientId }: { patientId: numb
                     </SelectContent>
                   </Select>
                 </div>
+                
                 <div>
                   <Label>Surname</Label>
                   <Input
@@ -561,6 +585,7 @@ export default function EditPatientModalContent({ patientId }: { patientId: numb
                     placeholder="Surname"
                   />
                 </div>
+                
                 <div>
                   <Label>First Name</Label>
                   <Input
@@ -569,6 +594,7 @@ export default function EditPatientModalContent({ patientId }: { patientId: numb
                     placeholder="First name"
                   />
                 </div>
+                
                 <div>
                   <Label>Last Name</Label>
                   <Input
@@ -578,26 +604,56 @@ export default function EditPatientModalContent({ patientId }: { patientId: numb
                   />
                 </div>
               </div>
+              
+              <div>
+                <Label>Photo</Label>
+                <div className="flex items-center gap-4">
+                  <Input
+                    type="file"
+                    accept="image/jpeg,image/png"
+                    onChange={handlePhotoChange}
+                    className="max-w-[300px]"
+                  />
+                  {photoPreview && (
+                    <div className="relative">
+                      <img
+                        src={photoPreview}
+                        alt="Photo preview"
+                        className="h-20 w-20 object-cover rounded-full"
+                      />
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        className="absolute top-0 right-0 h-6 w-6 p-0"
+                        onClick={removePhoto}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
             </CardContent>
           </Card>
-
-          {/* Work & Personal Information */}
+          
+          {/* Work & Personal Information Section */}
           <Card>
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
-                <Briefcase className="h-5 w-5 text-blue-500" />
+                <User className="h-5 w-5 text-blue-500" />
                 Work & Personal Information
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {/* Employee-only fields */}
                 {showEmployeeWorkFields && (
                   <>
                     <div>
                       <Label>Type</Label>
                       <Select value={patient.type} onValueChange={(v) => updatePatient("type", v)}>
-                        <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select type" />
+                        </SelectTrigger>
                         <SelectContent>
                           {employeeTypes.map((t) => (
                             <SelectItem key={t} value={t}>{t}</SelectItem>
@@ -605,11 +661,13 @@ export default function EditPatientModalContent({ patientId }: { patientId: numb
                         </SelectContent>
                       </Select>
                     </div>
-
+                    
                     <div>
                       <Label>Division</Label>
                       <Select value={patient.division} onValueChange={(v) => updatePatient("division", v)}>
-                        <SelectTrigger><SelectValue placeholder="Select division" /></SelectTrigger>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select division" />
+                        </SelectTrigger>
                         <SelectContent>
                           {divisions.map((d) => (
                             <SelectItem key={d} value={d}>{d}</SelectItem>
@@ -617,11 +675,13 @@ export default function EditPatientModalContent({ patientId }: { patientId: numb
                         </SelectContent>
                       </Select>
                     </div>
-
+                    
                     <div>
                       <Label>Location</Label>
                       <Select value={patient.location} onValueChange={(v) => updatePatient("location", v)}>
-                        <SelectTrigger><SelectValue placeholder="Select location" /></SelectTrigger>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select location" />
+                        </SelectTrigger>
                         <SelectContent>
                           {locations.map((l) => (
                             <SelectItem key={l} value={l}>{l}</SelectItem>
@@ -631,47 +691,66 @@ export default function EditPatientModalContent({ patientId }: { patientId: numb
                     </div>
                   </>
                 )}
-
-                {/* Non-NPA type (Non-NPA only) */}
+                
                 {showNonNpaType && (
                   <div className="md:col-span-1">
                     <Label>Non-NPA Category</Label>
                     <Select value={patient.nonnpaType} onValueChange={(v) => updatePatient("nonnpaType", v)}>
-                      <SelectTrigger><SelectValue placeholder="Select Non-NPA category" /></SelectTrigger>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select Non-NPA category" />
+                      </SelectTrigger>
                       <SelectContent>
-                        {NON_NPA_TYPES.map((t) => (
+                        {nonnpaCategories.map((t) => (
                           <SelectItem key={t} value={t}>{t}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
                 )}
-
-                {/* Dependent Type (Dependent only) */}
+                
                 {isDependent && (
-                  <div className="md:col-span-1">
-                    <Label>Dependent Type</Label>
-                    <Select
-                      value={patient.dependentType || ""}
-                      onValueChange={(v) => updatePatient("dependentType", v as Patient["dependentType"])}
-                    >
-                      <SelectTrigger><SelectValue placeholder="Select dependent type" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Employee Dependent">Employee Dependent</SelectItem>
-                        <SelectItem value="Retiree Dependent">Retiree Dependent</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  <>
+                    <div className="md:col-span-1">
+                      <Label>Dependent Type</Label>
+                      <Select
+                        value={patient.dependentType || ""}
+                        onValueChange={(v) => updatePatient("dependentType", v as Patient["dependentType"])}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select dependent type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Employee Dependent">Employee Dependent</SelectItem>
+                          <SelectItem value="Retiree Dependent">Retiree Dependent</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    <div className="md:col-span-1">
+                      <Label>Relationship</Label>
+                      <Select
+                        value={patient.relationship || ""}
+                        onValueChange={(v) => updatePatient("relationship", v)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select relationship" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {nokRelationships.map((r) => (
+                            <SelectItem key={r} value={r}>{r}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </>
                 )}
-
-                {/* Shared personal fields */}
+                
                 <div>
                   <Label>Marital Status</Label>
-                  <Select
-                    value={patient.maritalStatus}
-                    onValueChange={(v) => updatePatient("maritalStatus", v)}
-                  >
-                    <SelectTrigger><SelectValue placeholder="Select marital status" /></SelectTrigger>
+                  <Select value={patient.maritalStatus} onValueChange={(v) => updatePatient("maritalStatus", v)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select marital status" />
+                    </SelectTrigger>
                     <SelectContent>
                       {maritalStatuses.map((m) => (
                         <SelectItem key={m} value={m}>{m}</SelectItem>
@@ -679,11 +758,13 @@ export default function EditPatientModalContent({ patientId }: { patientId: numb
                     </SelectContent>
                   </Select>
                 </div>
-
+                
                 <div>
-                  <Label>Gender *</Label>
+                  <Label>Gender</Label>
                   <Select value={patient.gender} onValueChange={(v) => updatePatient("gender", v)}>
-                    <SelectTrigger><SelectValue placeholder="Select gender" /></SelectTrigger>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select gender" />
+                    </SelectTrigger>
                     <SelectContent>
                       {genders.map((g) => (
                         <SelectItem key={g} value={g}>{g}</SelectItem>
@@ -691,16 +772,16 @@ export default function EditPatientModalContent({ patientId }: { patientId: numb
                     </SelectContent>
                   </Select>
                 </div>
-
+                
                 <div>
-                  <Label>Date of Birth *</Label>
+                  <Label>Date of Birth</Label>
                   <Input
                     type="date"
                     value={patient.dateOfBirth}
                     onChange={(e) => updatePatient("dateOfBirth", e.target.value)}
                   />
                 </div>
-
+                
                 <div>
                   <Label>Age</Label>
                   <Input value={patient.age} readOnly className="bg-muted" />
@@ -708,12 +789,12 @@ export default function EditPatientModalContent({ patientId }: { patientId: numb
               </div>
             </CardContent>
           </Card>
-
-          {/* Contact Information */}
+          
+          {/* Contact Information Section */}
           <Card>
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
-                <Mail className="h-5 w-5 text-blue-500" />
+                <User className="h-5 w-5 text-blue-500" />
                 Contact Information
               </CardTitle>
             </CardHeader>
@@ -728,6 +809,7 @@ export default function EditPatientModalContent({ patientId }: { patientId: numb
                     placeholder="email@example.com"
                   />
                 </div>
+                
                 <div>
                   <Label>Phone</Label>
                   <Input
@@ -736,10 +818,13 @@ export default function EditPatientModalContent({ patientId }: { patientId: numb
                     placeholder="Phone number"
                   />
                 </div>
+                
                 <div>
                   <Label>State of Residence</Label>
                   <Select value={patient.stateOfResidence} onValueChange={(v) => updatePatient("stateOfResidence", v)}>
-                    <SelectTrigger><SelectValue placeholder="Select state" /></SelectTrigger>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select state" />
+                    </SelectTrigger>
                     <SelectContent>
                       {nigerianStates.map((s) => (
                         <SelectItem key={s} value={s}>{s}</SelectItem>
@@ -748,6 +833,7 @@ export default function EditPatientModalContent({ patientId }: { patientId: numb
                   </Select>
                 </div>
               </div>
+              
               <div>
                 <Label>Residential Address</Label>
                 <Input
@@ -756,11 +842,14 @@ export default function EditPatientModalContent({ patientId }: { patientId: numb
                   placeholder="Current residential address"
                 />
               </div>
+              
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <Label>State of Origin</Label>
                   <Select value={patient.stateOfOrigin} onValueChange={(v) => updatePatient("stateOfOrigin", v)}>
-                    <SelectTrigger><SelectValue placeholder="Select state" /></SelectTrigger>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select state" />
+                    </SelectTrigger>
                     <SelectContent>
                       {nigerianStates.map((s) => (
                         <SelectItem key={s} value={s}>{s}</SelectItem>
@@ -768,15 +857,17 @@ export default function EditPatientModalContent({ patientId }: { patientId: numb
                     </SelectContent>
                   </Select>
                 </div>
+                
                 <div>
                   <Label>Local Government Area</Label>
                   <Input
-                    value={patient.localgovernmentarea}
-                    onChange={(e) => updatePatient("localgovernmentarea", e.target.value)}
+                    value={patient.localGovernmentArea}
+                    onChange={(e) => updatePatient("localGovernmentArea", e.target.value)}
                     placeholder="Local Government Area"
                   />
                 </div>
               </div>
+              
               <div>
                 <Label>Permanent Address</Label>
                 <Input
@@ -787,12 +878,12 @@ export default function EditPatientModalContent({ patientId }: { patientId: numb
               </div>
             </CardContent>
           </Card>
-
-          {/* Medical Details */}
+          
+          {/* Medical Details Section */}
           <Card>
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
-                <Heart className="h-5 w-5 text-blue-500" />
+                <User className="h-5 w-5 text-blue-500" />
                 Medical Details
               </CardTitle>
             </CardHeader>
@@ -801,7 +892,9 @@ export default function EditPatientModalContent({ patientId }: { patientId: numb
                 <div>
                   <Label>Blood Group</Label>
                   <Select value={patient.bloodGroup} onValueChange={(v) => updatePatient("bloodGroup", v)}>
-                    <SelectTrigger><SelectValue placeholder="Select blood group" /></SelectTrigger>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select blood group" />
+                    </SelectTrigger>
                     <SelectContent>
                       {bloodGroups.map((b) => (
                         <SelectItem key={b} value={b}>{b}</SelectItem>
@@ -809,10 +902,13 @@ export default function EditPatientModalContent({ patientId }: { patientId: numb
                     </SelectContent>
                   </Select>
                 </div>
+                
                 <div>
                   <Label>Genotype</Label>
                   <Select value={patient.genotype} onValueChange={(v) => updatePatient("genotype", v)}>
-                    <SelectTrigger><SelectValue placeholder="Select genotype" /></SelectTrigger>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select genotype" />
+                    </SelectTrigger>
                     <SelectContent>
                       {genotypes.map((g) => (
                         <SelectItem key={g} value={g}>{g}</SelectItem>
@@ -823,12 +919,12 @@ export default function EditPatientModalContent({ patientId }: { patientId: numb
               </div>
             </CardContent>
           </Card>
-
-          {/* Next of Kin */}
+          
+          {/* Next of Kin Section */}
           <Card>
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
-                <Users className="h-5 w-5 text-blue-500" />
+                <User className="h-5 w-5 text-blue-500" />
                 Next of Kin
               </CardTitle>
             </CardHeader>
@@ -842,6 +938,7 @@ export default function EditPatientModalContent({ patientId }: { patientId: numb
                     placeholder="First name"
                   />
                 </div>
+                
                 <div>
                   <Label>Last Name</Label>
                   <Input
@@ -850,13 +947,16 @@ export default function EditPatientModalContent({ patientId }: { patientId: numb
                     placeholder="Last name"
                   />
                 </div>
+                
                 <div>
                   <Label>Relationship</Label>
                   <Select
                     value={patient.nextOfKin.relationship}
                     onValueChange={(v) => updateNok("relationship", v)}
                   >
-                    <SelectTrigger><SelectValue placeholder="Select relationship" /></SelectTrigger>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select relationship" />
+                    </SelectTrigger>
                     <SelectContent>
                       {nokRelationships.map((r) => (
                         <SelectItem key={r} value={r}>{r}</SelectItem>
@@ -865,6 +965,7 @@ export default function EditPatientModalContent({ patientId }: { patientId: numb
                   </Select>
                 </div>
               </div>
+              
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <Label>Address</Label>
@@ -874,6 +975,7 @@ export default function EditPatientModalContent({ patientId }: { patientId: numb
                     placeholder="Address"
                   />
                 </div>
+                
                 <div>
                   <Label>Phone</Label>
                   <Input
@@ -885,65 +987,70 @@ export default function EditPatientModalContent({ patientId }: { patientId: numb
               </div>
             </CardContent>
           </Card>
-
-          <Button type="submit" disabled={isSubmitting} className="w-full bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-bold py-3">
+          
+          {/* Submit Button */}
+          <Button
+            type="submit"
+            disabled={isSubmitting}
+            className="w-full bg-gray-900 hover:bg-gray-900 text-white font-bold py-3"
+          >
             {isSubmitting ? "Updating..." : "Update Patient"}
           </Button>
         </form>
-
-        {/* Switch Category Confirmation Dialog */}
+        
+        {/* Dialogs */}
         <AlertDialog open={showSwitchConfirm} onOpenChange={setShowSwitchConfirm}>
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Switch Category</AlertDialogTitle>
               <AlertDialogDescription>
-                Are you sure you want to switch to {pendingCategory}? 
-                This will reset some fields.
+                Are you sure you want to switch to {pendingCategory}? This will reset some fields.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={confirmSwitchCategory} disabled={isSubmitting}>
-                {isSubmitting ? (
-                  <>
-                    Switching...
-                  </>
-                ) : (
-                  "Switch Category"
-                )}
+              <AlertDialogAction
+                onClick={confirmSwitchCategory}
+                disabled={isSubmitting}
+                className="bg-gray-900 hover:bg-gray-900 text-white"
+              >
+                {isSubmitting ? "Switching..." : "Switch Category"}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-
-        {/* Success Dialog */}
+        
         <AlertDialog open={showSuccessDialog} onOpenChange={setShowSuccessDialog}>
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Update Successful</AlertDialogTitle>
-              <AlertDialogDescription>
-                {dialogMessage}
-              </AlertDialogDescription>
+              <AlertDialogDescription>{dialogMessage}</AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogAction onClick={() => setShowSuccessDialog(false)}>
+              <AlertDialogAction
+                onClick={() => {
+                  setShowSuccessDialog(false);
+                  onClose();
+                }}
+                className="bg-gray-900 hover:bg-gray-900 text-white"
+              >
                 OK
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-
-        {/* Error Dialog */}
+        
         <AlertDialog open={showErrorDialog} onOpenChange={setShowErrorDialog}>
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Error</AlertDialogTitle>
-              <AlertDialogDescription>
-                {dialogMessage}
-              </AlertDialogDescription>
+              <AlertDialogDescription>{dialogMessage}</AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogAction onClick={() => setShowErrorDialog(false)}>
+              <AlertDialogAction
+                onClick={() => setShowErrorDialog(false)}
+                className="bg-gray-900 hover:bg-gray-900 text-white"
+              >
                 OK
               </AlertDialogAction>
             </AlertDialogFooter>

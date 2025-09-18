@@ -10,18 +10,64 @@ import { Eye, EyeOff } from "lucide-react";
 import Image from "next/image";
 import npalogo from "@/public/npalogo.png";
 import { useRouter } from "next/navigation";
+import { useToast } from "@/lib/toast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export default function LoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showErrorDialog, setShowErrorDialog] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
 
   const router = useRouter();
+  const { toast } = useToast();
 
-  const handleFakeLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    router.push("/medical-records/dashboard");
+    setIsSubmitting(true);
+
+    try {
+      const baseURL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+      const res = await fetch(`${baseURL}/api/token/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Invalid username or password");
+      }
+
+      const data = await res.json();
+      // Store tokens in localStorage or sessionStorage based on rememberMe
+      const storage = rememberMe ? localStorage : sessionStorage;
+      storage.setItem("accessToken", data.access);
+      storage.setItem("refreshToken", data.refresh);
+
+      toast({
+        title: "Success",
+        description: "Logged in successfully!",
+      });
+      router.push("/medical-records/dashboard");
+    } catch (err: any) {
+      setErrorMessage(err.message || "An unexpected error occurred. Please try again.");
+      setShowErrorDialog(true);
+      console.error("Login error:", err);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -30,24 +76,23 @@ export default function LoginPage() {
       <div className="flex items-center justify-center p-8">
         <div className="w-full max-w-md bg-white/10 backdrop-blur-lg rounded-3xl p-8 shadow-2xl">
           {/* === Branding === */}
-         <div className="flex items-center mb-8">
-          <Image
-            src={npalogo}
-            alt="NPA Logo"
-            width={40}
-            height={40}
-            className="rounded-lg mr-3"
-            priority
-          />
-          <h1 className="text-white text-3xl font-bold">NPA EMR</h1>
-        </div>
-
+          <div className="flex items-center mb-8">
+            <Image
+              src={npalogo}
+              alt="NPA Logo"
+              width={40}
+              height={40}
+              className="rounded-lg mr-3"
+              priority
+            />
+            <h1 className="text-white text-3xl font-bold">NPA EMR</h1>
+          </div>
 
           {/* === Heading === */}
           <h2 className="text-white text-2xl font-semibold mb-6">Sign In</h2>
 
           {/* === Login Form === */}
-          <form onSubmit={handleFakeLogin} className="space-y-5">
+          <form onSubmit={handleLogin} className="space-y-5">
             <div>
               <Label htmlFor="username" className="text-white/80 text-sm">
                 Username
@@ -110,11 +155,27 @@ export default function LoginPage() {
 
             <Button
               type="submit"
+              disabled={isSubmitting}
               className="w-full bg-white text-npa-primary hover:bg-white/90 font-semibold py-3 rounded-xl transition"
             >
-              Log In
+              {isSubmitting ? "Logging in..." : "Log In"}
             </Button>
           </form>
+
+          {/* === Error Dialog === */}
+          <AlertDialog open={showErrorDialog} onOpenChange={setShowErrorDialog}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Error</AlertDialogTitle>
+                <AlertDialogDescription>{errorMessage}</AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogAction onClick={() => setShowErrorDialog(false)}>
+                  OK
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </div>
 

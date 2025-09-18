@@ -1,9 +1,9 @@
-// /frontend/lib/constants.ts
+// frontend/lib/constants.ts
 
-// ✅ Common titles for patients, dependents, NOK
+// Common titles for patients, dependents, NOK
 export const nameTitles = ["Mr", "Mrs", "Miss", "Master", "Engr", "Dr"];
 
-// ✅ Possible locations for employees
+// Possible locations for employees
 export const locations = [
   "Headquarters",
   "Bode Thomas Clinic",
@@ -16,7 +16,7 @@ export const locations = [
   "Lekki Deep Sea Port",
 ];
 
-// ✅ Divisions within the organization
+// Divisions within the organization
 export const divisions = [
   "Engineering",
   "Land & Asset Administration",
@@ -44,14 +44,26 @@ export const divisions = [
   "MD’s Office",
 ];
 
-// ✅ Marital status options
+export  const priorities = ["Low", "Medium", "High", "Emergency"];
+
+export const clinics = ["General", "Physiotherapy", "Eye", "Sickle Cell", "Dental", "Cardiology"];
+
+export const visitTypes = [
+  { value: "consultation", label: "Consultation"},
+  { value: "follow-up", label: "Follow-up"},
+  { value: "emergency", label: "Emergency"},
+  { value: "routine-checkup", label: "Routine Checkup"},
+
+];
+
+// Marital status options
 export const maritalStatuses = ["Single", "Married", "Divorced", "Widowed"];
 
-// ✅ Gender options
+// Gender options
 export const genders = ["Male", "Female"];
 
-// ✅ Other non-NPA categories
-export const nonnpaCategories = [
+// Other non-NPA categories
+export const NON_NPA_TYPES = [
   "Police",
   "IT",
   "NYSC",
@@ -61,22 +73,25 @@ export const nonnpaCategories = [
   "Seaview",
 ];
 
-// ✅ Employee type
+// Employee type
 export const employeeTypes = ["Officer", "Staff"];
 
-// ✅ Blood group options
+// Blood group options
 export const bloodGroups = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 
-// ✅ Genotype options
+// Genotype options
 export const genotypes = ["AA", "AS", "SS", "AC", "SC"];
 
-// ✅ Dependent relationships
-export const dependentRelationships = ["Spouse", "Child", "Parent", "Sibling", "Other"];
+// Dependent relationships
+export const dependentRelationships = ["Spouse", "Parent", "Sibling", "Child"];
 
-// ✅ Next of Kin relationships
-export const nokRelationships = ["Spouse", "Child", "Parent", "Sibling", "Other"];
+// Next of Kin relationships
+export const nokRelationships = ["Spouse", "Parent", "Sibling", "Child"];
 
-// ✅ Nigerian states
+// Dependent types
+export const dependentTypes = ["Employee Dependent", "Retiree Dependent"];
+
+// Nigerian states
 export const nigerianStates = [
   "Abia", "Adamawa", "Akwa Ibom", "Anambra", "Bauchi", "Bayelsa", "Benue", "Borno",
   "Cross River", "Delta", "Ebonyi", "Edo", "Ekiti", "Enugu", "FCT", "Gombe", "Imo",
@@ -85,7 +100,7 @@ export const nigerianStates = [
   "Yobe", "Zamfara"
 ];
 
-// ✅ Injection sites for medical procedures
+// Injection sites for medical procedures
 export const injectionsites = [
   "Deltoid muscle (left)",
   "Deltoid muscle (right)",
@@ -117,7 +132,5 @@ export const routes = [
   "Intra-articular"
 ];
 
-// ✅ Common dosage units
+// Common dosage units
 export const dosageunits = ["mg", "mL", "mcg", "units", "IU"];
-
-
