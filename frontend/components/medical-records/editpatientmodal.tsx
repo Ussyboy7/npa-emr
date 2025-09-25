@@ -19,6 +19,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import Link from "next/link";
 
 // Import shared constants
 import {
@@ -32,7 +33,7 @@ import {
   genotypes,
   nokRelationships,
   nigerianStates,
-  nonnpaCategories,
+  NON_NPA_TYPES,
 } from "@/lib/constants";
 
 type EmployeeCategory = "Employee" | "Retiree" | "NonNPA" | "Dependent";
@@ -139,39 +140,39 @@ export default function EditPatientModalContent({ patientId, onClose }: { patien
   const [pendingCategory, setPendingCategory] = useState<EmployeeCategory | null>(null);
   const [showSwitchConfirm, setShowSwitchConfirm] = useState(false);
   const [patient, setPatient] = useState<Patient>(makeEmptyPatient("Employee"));
+  const [photo, setPhoto] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [showErrorDialog, setShowErrorDialog] = useState(false);
   const [dialogMessage, setDialogMessage] = useState("");
-  const [photo, setPhoto] = useState<File | null>(null);
-  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [apiErrors, setApiErrors] = useState<Record<string, string>>({});
 
   // Fetch patient data on mount
   useEffect(() => {
     const loadPatient = async () => {
       setLoading(true);
       try {
-        const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/patients/${patientId}/`,
-          {
-            headers: {
-              "Content-Type": "application/json",
-            },
-          }
-        );
+        const baseURL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+        const res = await fetch(`${baseURL}/api/patients/${patientId}/`, {
+          headers: {
+            "Content-Type": "application/json",
+          },
+        });
         
         if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
+          const err = await res.json().catch(() => ({ detail: "Failed to load patient data" }));
           throw new Error(err.detail || "Failed to load patient data.");
         }
         
         const data = await res.json();
-        setCategory(data.patient_type);
+        setCategory(data.patient_type as EmployeeCategory);
         setPatient({
-          ...makeEmptyPatient(data.patient_type),
+          ...makeEmptyPatient(data.patient_type as EmployeeCategory),
           id: data.id,
           patient_id: data.patient_id,
-          employeeCategory: data.patient_type,
+          employeeCategory: data.patient_type as EmployeeCategory,
           dependentType: data.dependent_type,
           personalNumber: data.personal_number || data.sponsor?.personal_number || "",
           sponsorId: data.sponsor?.id || "",
@@ -199,16 +200,16 @@ export default function EditPatientModalContent({ patientId, onClose }: { patien
           nonnpaType: data.non_npa_type || "",
           relationship: data.relationship || "",
           nextOfKin: {
-            firstName: data.next_of_kin?.first_name || data.nok_first_name || "",
-            lastName: data.next_of_kin?.last_name || data.nok_last_name || "",
-            relationship: data.next_of_kin?.relationship || data.nok_relationship || "",
-            address: data.next_of_kin?.address || data.nok_address || "",
-            phone: data.next_of_kin?.phone || data.nok_phone || "",
+            firstName: data.nok_first_name || "",
+            lastName: data.nok_last_name || "",
+            relationship: data.nok_relationship || "",
+            address: data.nok_address || "",
+            phone: data.nok_phone || "",
           },
         });
         
         if (data.photo) {
-          setPhotoPreview(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}${data.photo}`);
+          setPhotoPreview(`${baseURL}${data.photo}`);
         }
       } catch (err: any) {
         setDialogMessage(err.message || "Failed to load patient data. Please try again.");
@@ -252,6 +253,7 @@ export default function EditPatientModalContent({ patientId, onClose }: { patien
       setPhotoPreview(null);
       setPendingCategory(null);
       setShowSwitchConfirm(false);
+      setApiErrors({});
       toast({ title: "Category Switched", description: `Switched to ${pendingCategory} category. Fields reset.` });
     }
   };
@@ -262,69 +264,74 @@ export default function EditPatientModalContent({ patientId, onClose }: { patien
   };
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setPhoto(file);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPhotoPreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+    const file = e.target.files ? e.target.files[0] : null;
+    if (file && file.size > 2 * 1024 * 1024) {
+      setDialogMessage("Photo size must be less than 2MB.");
+      setShowErrorDialog(true);
+      return;
     }
-  };
-
-  const removePhoto = () => {
-    setPhoto(null);
-    setPhotoPreview(null);
+    if (file && !file.type.startsWith("image/")) {
+      setDialogMessage("Photo must be an image file.");
+      setShowErrorDialog(true);
+      return;
+    }
+    setPhoto(file);
+    if (file) {
+      const previewUrl = URL.createObjectURL(file);
+      setPhotoPreview(previewUrl);
+    } else {
+      setPhotoPreview(null);
+    }
   };
 
   const handleSearch = async () => {
     if (!patient.searchNumber.trim()) {
-      setDialogMessage("Enter a personal number to search.");
+      setDialogMessage("Enter a sponsor personal number to search.");
       setShowErrorDialog(true);
       return;
     }
-    
-    setIsSubmitting(true);
+    setIsSearching(true);
     try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/patients/search/?q=${patient.searchNumber}`,
-        {
-          headers: {
-            "Content-Type": "application/json",
-          },
-        }
-      );
-      
+      const baseURL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const res = await fetch(`${baseURL}/api/patients/search/?q=${patient.searchNumber}`, {
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || "Search failed");
+        const err = await res.json().catch(() => ({ detail: "Search failed" }));
+        if (res.status === 404) {
+          throw new Error(
+            `Sponsor with personal number ${patient.searchNumber} not found. Please register the Employee or Retiree first.`
+          );
+        }
+        const errorMsg =
+          err.detail ||
+          Object.entries(err)
+            .map(([key, value]) => `${key}: ${Array.isArray(value) ? value[0] : value}`)
+            .join(", ") ||
+          `Search failed (Status: ${res.status})`;
+        throw new Error(errorMsg);
       }
-      
       const data = await res.json();
-      
-      // Only employees can be searched
-      if (data.patient_type !== "Employee") {
-        throw new Error("Only Employee records can be searched.");
+      if (data.patient_type !== "Employee" && data.patient_type !== "Retiree") {
+        throw new Error("Selected patient is not an Employee or Retiree. Please search for a valid sponsor.");
       }
-      
-      updatePatient("sponsorId", data.id);
-      updatePatient("personalNumber", data.personal_number || "");
-      updatePatient("surname", data.surname || "");
-      updatePatient("firstName", data.first_name || "");
-      updatePatient("lastName", data.last_name || "");
-      updatePatient("division", data.division || "");
-      updatePatient("location", data.location || "");
-      updatePatient("email", data.email || "");
-      updatePatient("address", data.address || "");
-      
-      toast({ title: "Success", description: "Employee found and fields populated." });
+      setPatient((prev) => ({
+        ...prev,
+        sponsorId: data.id || "",
+        personalNumber: data.personal_number || "",
+        dependentType: data.patient_type === "Employee" ? "Employee Dependent" : "Retiree Dependent",
+      }));
+      toast({ title: "Success", description: "Sponsor found and fields populated." });
     } catch (err: any) {
-      setDialogMessage(err.message || "Employee not found or error occurred.");
+      const errorMessage = err.message || "Unexpected error during search. Check network or console.";
+      setDialogMessage(errorMessage);
       setShowErrorDialog(true);
-      console.error(err);
+      console.error("Search error:", err, err.stack);
+      toast({ title: "Error", description: errorMessage, variant: "destructive" });
     } finally {
-      setIsSubmitting(false);
+      setIsSearching(false);
     }
   };
 
@@ -332,14 +339,12 @@ export default function EditPatientModalContent({ patientId, onClose }: { patien
     if (!patient.surname.trim() || !patient.firstName.trim()) {
       return { ok: false, message: "Please provide Surname and First Name." };
     }
-    
     if ((category === "Employee" || category === "Retiree") && !patient.personalNumber.trim()) {
       return { ok: false, message: "Personal Number is required." };
     }
-    
     if (category === "Dependent") {
       if (!patient.sponsorId) {
-        return { ok: false, message: "Please search for a sponsor first." };
+        return { ok: false, message: "Please search for a valid Employee or Retiree sponsor first." };
       }
       if (!patient.dependentType) {
         return { ok: false, message: "Please select Dependent Type." };
@@ -348,25 +353,23 @@ export default function EditPatientModalContent({ patientId, onClose }: { patien
         return { ok: false, message: "Please select Relationship." };
       }
     }
-    
     if (category === "Employee") {
       if (!patient.type || !patient.division || !patient.location) {
         return { ok: false, message: "Type, Division, and Location are required for Employees." };
       }
     }
-    
     if (category === "NonNPA" && !patient.nonnpaType) {
       return { ok: false, message: "Please select a Non-NPA Category." };
     }
-    
     if (patient.email && !/^\S+@\S+\.\S+$/.test(patient.email)) {
       return { ok: false, message: "Please enter a valid email." };
     }
-    
-    if (photo && !["image/jpeg", "image/png"].includes(photo.type)) {
-      return { ok: false, message: "Photo must be a JPEG or PNG image." };
+    if (photo && !photo.type.startsWith("image/")) {
+      return { ok: false, message: "Photo must be an image file." };
     }
-    
+    if (patient.dateOfBirth && new Date(patient.dateOfBirth) > new Date()) {
+      return { ok: false, message: "Date of Birth cannot be in the future." };
+    }
     return { ok: true };
   };
 
@@ -374,18 +377,17 @@ export default function EditPatientModalContent({ patientId, onClose }: { patien
     e?.preventDefault();
     const v = validate();
     if (!v.ok) {
-      setDialogMessage(v.message || "");
+      setDialogMessage(v.message || "Validation failed - check fields.");
       setShowErrorDialog(true);
       return;
     }
-    
     setIsSubmitting(true);
+    setApiErrors({});
     try {
       const baseURL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
       const endpoint = `${baseURL}/api/patients/${patientId}/`;
       const formData = new FormData();
-      
-      // Add common fields
+      formData.append("patient_type", category);
       formData.append("title", patient.title);
       formData.append("surname", patient.surname);
       formData.append("first_name", patient.firstName);
@@ -408,10 +410,7 @@ export default function EditPatientModalContent({ patientId, onClose }: { patien
       formData.append("nok_relationship", patient.nextOfKin.relationship);
       formData.append("nok_address", patient.nextOfKin.address);
       formData.append("nok_phone", patient.nextOfKin.phone);
-      
       if (photo) formData.append("photo", photo);
-      
-      // Add category-specific fields
       if (category === "Employee") {
         formData.append("personal_number", patient.personalNumber);
         formData.append("type", patient.type);
@@ -420,53 +419,50 @@ export default function EditPatientModalContent({ patientId, onClose }: { patien
       } else if (category === "Retiree") {
         formData.append("personal_number", patient.personalNumber);
       } else if (category === "Dependent") {
-        if (patient.sponsorId) {
-          formData.append("sponsor_id", patient.sponsorId);
-        }
+        formData.append("sponsor_id", patient.sponsorId || "");
         formData.append("dependent_type", patient.dependentType || "");
         formData.append("relationship", patient.relationship || "");
       } else if (category === "NonNPA") {
         formData.append("non_npa_type", patient.nonnpaType);
       }
-      
       const res = await fetch(endpoint, {
-        method: "PUT", // Changed from PATCH to PUT to match backend
-        headers: {},
+        method: "PUT",
         body: formData,
       });
-      
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        console.error("Update failed:", err);
-        setDialogMessage(err.detail || "Failed to update patient data.");
+        console.error("Submit failed:", err);
+        const fieldErrors: Record<string, string> = {};
+        Object.entries(err).forEach(([key, value]) => {
+          fieldErrors[key] = Array.isArray(value) ? value[0] : String(value);
+        });
+        setApiErrors(fieldErrors);
+        const errorMsg = err.detail || Object.values(fieldErrors).join(", ") || `Submission failed (Status: ${res.status})`;
+        setDialogMessage(errorMsg);
         setShowErrorDialog(true);
         return;
       }
-      
-      await res.json().catch(() => null);
-      setDialogMessage("Patient updated successfully!");
+      const data = await res.json();
+      setDialogMessage(`Patient updated successfully! Patient ID: ${data.patient_id}`);
       setShowSuccessDialog(true);
       setPhoto(null);
       setPhotoPreview(null);
-      onClose();
+      setApiErrors({});
     } catch (err: any) {
-      console.error(err);
-      setDialogMessage(err.message || "Unexpected error occurred. Please try again.");
+      console.error("Submit error:", err, err.stack);
+      setDialogMessage(err.message || "Unexpected error occurred - check network or console.");
       setShowErrorDialog(true);
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const showEmployeeSearch = category === "Employee";
-  const showPersonalNumber = category === "Employee" || category === "Retiree";
+  const showSponsorSearch = category === "Dependent";
+  const showPersonalNumber = category === "Employee" || category === "Retiree" || category === "Dependent";
   const showEmployeeWorkFields = category === "Employee";
   const showNonNpaType = category === "NonNPA";
   const isDependent = category === "Dependent";
-  const personalNumberLabel = useMemo(() => {
-    if (category === "Dependent") return "Sponsor Personal Number";
-    return "Personal Number";
-  }, [category]);
+  const personalNumberLabel = isDependent ? "Sponsor Personal Number" : "Personal Number";
 
   if (loading) {
     return (
@@ -480,16 +476,15 @@ export default function EditPatientModalContent({ patientId, onClose }: { patien
   }
 
   return (
-    <Card className="max-w-6xl mx-auto shadow-xl">
+    <Card className="max-w-6xl mx-auto shadow-xl overflow-y-auto max-screen">
       <CardHeader className="rounded-t-lg">
         <CardTitle className="text-3xl font-bold flex items-center gap-2">
-          <User className="h-8 w-8 text-blue-500" />
+          <User className="h-8 w-8" />
           Edit Patient
         </CardTitle>
       </CardHeader>
-      <CardContent className="p-6 space-y-8">
+      <CardContent className="p-6">
         <form onSubmit={handleSubmit} className="space-y-8">
-          {/* Category Selection */}
           <div>
             <Label className="text-lg font-semibold mb-2 block">Patient Category</Label>
             <ToggleGroup
@@ -511,14 +506,12 @@ export default function EditPatientModalContent({ patientId, onClose }: { patien
             </ToggleGroup>
           </div>
           <Separator />
-          
-          {/* Employee Search Section */}
-          {showEmployeeSearch && (
+          {showSponsorSearch && (
             <Card>
               <CardHeader className="pb-4">
                 <CardTitle className="text-lg flex items-center gap-2">
                   <Search className="h-5 w-5 text-blue-500" />
-                  Search Employee
+                  Search Sponsor
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -526,22 +519,29 @@ export default function EditPatientModalContent({ patientId, onClose }: { patien
                   <Input
                     value={patient.searchNumber}
                     onChange={(e) => updatePatient("searchNumber", e.target.value)}
-                    placeholder="Enter personal number"
+                    placeholder="Enter sponsor personal number"
                   />
                   <Button
                     type="button"
                     onClick={handleSearch}
-                    disabled={isSubmitting}
+                    disabled={isSearching}
                     className="bg-gray-900 hover:bg-gray-900 text-white"
                   >
-                    {isSubmitting ? "Searching..." : "Search"}
+                    {isSearching ? "Searching..." : "Search"}
                   </Button>
                 </div>
+                {showErrorDialog && dialogMessage.includes("not found") && (
+                  <p className="text-sm text-muted-foreground mt-2">
+                    Sponsor not found. Please{" "}
+                    <Link href="/medical-records/register-patient" className="text-blue-500 underline">
+                      register the Employee or Retiree
+                    </Link>{" "}
+                    first.
+                  </p>
+                )}
               </CardContent>
             </Card>
           )}
-          
-          {/* Personal Details Section */}
           <Card>
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
@@ -557,15 +557,42 @@ export default function EditPatientModalContent({ patientId, onClose }: { patien
                     value={patient.personalNumber}
                     onChange={(e) => updatePatient("personalNumber", e.target.value)}
                     placeholder={personalNumberLabel}
-                    readOnly={category === "Dependent"}
+                    readOnly={isDependent}
+                    className={isDependent ? "bg-gray-50" : ""}
                   />
+                  {apiErrors.personal_number && (
+                    <p className="text-red-500 text-sm">{apiErrors.personal_number}</p>
+                  )}
+                  {apiErrors.sponsor_id && (
+                    <p className="text-red-500 text-sm">{apiErrors.sponsor_id}</p>
+                  )}
                 </div>
               )}
-              
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="md:col-span-1 md:row-span-2 flex flex-col items-center justify-center">
+                  <div className="w-32 h-32 rounded-full overflow-hidden bg-gray-200 flex items-center justify-center mb-2">
+                    {photoPreview ? (
+                      <img src={photoPreview} alt="Patient preview" className="w-full h-full object-cover" />
+                    ) : (
+                      <User className="h-16 w-16 text-gray-400" />
+                    )}
+                  </div>
+                  <Label htmlFor="photo-upload" className="cursor-pointer">
+                    <Input
+                      id="photo-upload"
+                      type="file"
+                      accept="image/*"
+                      onChange={handlePhotoChange}
+                      className="hidden"
+                    />
+                    <Button variant="outline" size="sm" asChild>
+                      <label htmlFor="photo-upload">Upload Photo</label>
+                    </Button>
+                  </Label>
+                </div>
                 <div>
                   <Label>Title</Label>
-                  <Select value={patient.title} onValueChange={(v) => updatePatient("title", v)}>
+                  <Select value={patient.title} onValueChange={(v: string) => v && updatePatient("title", v)}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select title" />
                     </SelectTrigger>
@@ -575,26 +602,26 @@ export default function EditPatientModalContent({ patientId, onClose }: { patien
                       ))}
                     </SelectContent>
                   </Select>
+                  {apiErrors.title && <p className="text-red-500 text-sm">{apiErrors.title}</p>}
                 </div>
-                
                 <div>
-                  <Label>Surname</Label>
+                  <Label>Surname *</Label>
                   <Input
                     value={patient.surname}
                     onChange={(e) => updatePatient("surname", e.target.value)}
                     placeholder="Surname"
                   />
+                  {apiErrors.surname && <p className="text-red-500 text-sm">{apiErrors.surname}</p>}
                 </div>
-                
                 <div>
-                  <Label>First Name</Label>
+                  <Label>First Name *</Label>
                   <Input
                     value={patient.firstName}
                     onChange={(e) => updatePatient("firstName", e.target.value)}
                     placeholder="First name"
                   />
+                  {apiErrors.first_name && <p className="text-red-500 text-sm">{apiErrors.first_name}</p>}
                 </div>
-                
                 <div>
                   <Label>Last Name</Label>
                   <Input
@@ -602,41 +629,11 @@ export default function EditPatientModalContent({ patientId, onClose }: { patien
                     onChange={(e) => updatePatient("lastName", e.target.value)}
                     placeholder="Last name"
                   />
-                </div>
-              </div>
-              
-              <div>
-                <Label>Photo</Label>
-                <div className="flex items-center gap-4">
-                  <Input
-                    type="file"
-                    accept="image/jpeg,image/png"
-                    onChange={handlePhotoChange}
-                    className="max-w-[300px]"
-                  />
-                  {photoPreview && (
-                    <div className="relative">
-                      <img
-                        src={photoPreview}
-                        alt="Photo preview"
-                        className="h-20 w-20 object-cover rounded-full"
-                      />
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        className="absolute top-0 right-0 h-6 w-6 p-0"
-                        onClick={removePhoto}
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  )}
+                  {apiErrors.last_name && <p className="text-red-500 text-sm">{apiErrors.last_name}</p>}
                 </div>
               </div>
             </CardContent>
           </Card>
-          
-          {/* Work & Personal Information Section */}
           <Card>
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
@@ -649,8 +646,8 @@ export default function EditPatientModalContent({ patientId, onClose }: { patien
                 {showEmployeeWorkFields && (
                   <>
                     <div>
-                      <Label>Type</Label>
-                      <Select value={patient.type} onValueChange={(v) => updatePatient("type", v)}>
+                      <Label>Type *</Label>
+                      <Select value={patient.type} onValueChange={(v: string) => v && updatePatient("type", v)}>
                         <SelectTrigger>
                           <SelectValue placeholder="Select type" />
                         </SelectTrigger>
@@ -660,11 +657,11 @@ export default function EditPatientModalContent({ patientId, onClose }: { patien
                           ))}
                         </SelectContent>
                       </Select>
+                      {apiErrors.type && <p className="text-red-500 text-sm">{apiErrors.type}</p>}
                     </div>
-                    
                     <div>
-                      <Label>Division</Label>
-                      <Select value={patient.division} onValueChange={(v) => updatePatient("division", v)}>
+                      <Label>Division *</Label>
+                      <Select value={patient.division} onValueChange={(v: string) => v && updatePatient("division", v)}>
                         <SelectTrigger>
                           <SelectValue placeholder="Select division" />
                         </SelectTrigger>
@@ -674,11 +671,11 @@ export default function EditPatientModalContent({ patientId, onClose }: { patien
                           ))}
                         </SelectContent>
                       </Select>
+                      {apiErrors.division && <p className="text-red-500 text-sm">{apiErrors.division}</p>}
                     </div>
-                    
                     <div>
-                      <Label>Location</Label>
-                      <Select value={patient.location} onValueChange={(v) => updatePatient("location", v)}>
+                      <Label>Location *</Label>
+                      <Select value={patient.location} onValueChange={(v: string) => v && updatePatient("location", v)}>
                         <SelectTrigger>
                           <SelectValue placeholder="Select location" />
                         </SelectTrigger>
@@ -688,33 +685,38 @@ export default function EditPatientModalContent({ patientId, onClose }: { patien
                           ))}
                         </SelectContent>
                       </Select>
+                      {apiErrors.location && <p className="text-red-500 text-sm">{apiErrors.location}</p>}
                     </div>
                   </>
                 )}
-                
                 {showNonNpaType && (
                   <div className="md:col-span-1">
-                    <Label>Non-NPA Category</Label>
-                    <Select value={patient.nonnpaType} onValueChange={(v) => updatePatient("nonnpaType", v)}>
+                    <Label>Non-NPA Category *</Label>
+                    <Select
+                      value={patient.nonnpaType}
+                      onValueChange={(v: string) => v && updatePatient("nonnpaType", v)}
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="Select Non-NPA category" />
                       </SelectTrigger>
                       <SelectContent>
-                        {nonnpaCategories.map((t) => (
+                        {NON_NPA_TYPES.map((t) => (
                           <SelectItem key={t} value={t}>{t}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
+                    {apiErrors.non_npa_type && (
+                      <p className="text-red-500 text-sm">{apiErrors.non_npa_type}</p>
+                    )}
                   </div>
                 )}
-                
                 {isDependent && (
                   <>
                     <div className="md:col-span-1">
-                      <Label>Dependent Type</Label>
+                      <Label>Dependent Type *</Label>
                       <Select
                         value={patient.dependentType || ""}
-                        onValueChange={(v) => updatePatient("dependentType", v as Patient["dependentType"])}
+                        onValueChange={(v: string) => v && updatePatient("dependentType", v as Patient["dependentType"])}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Select dependent type" />
@@ -724,13 +726,15 @@ export default function EditPatientModalContent({ patientId, onClose }: { patien
                           <SelectItem value="Retiree Dependent">Retiree Dependent</SelectItem>
                         </SelectContent>
                       </Select>
+                      {apiErrors.dependent_type && (
+                        <p className="text-red-500 text-sm">{apiErrors.dependent_type}</p>
+                      )}
                     </div>
-                    
                     <div className="md:col-span-1">
-                      <Label>Relationship</Label>
+                      <Label>Relationship *</Label>
                       <Select
                         value={patient.relationship || ""}
-                        onValueChange={(v) => updatePatient("relationship", v)}
+                        onValueChange={(v: string) => v && updatePatient("relationship", v)}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Select relationship" />
@@ -741,13 +745,18 @@ export default function EditPatientModalContent({ patientId, onClose }: { patien
                           ))}
                         </SelectContent>
                       </Select>
+                      {apiErrors.relationship && (
+                        <p className="text-red-500 text-sm">{apiErrors.relationship}</p>
+                      )}
                     </div>
                   </>
                 )}
-                
                 <div>
                   <Label>Marital Status</Label>
-                  <Select value={patient.maritalStatus} onValueChange={(v) => updatePatient("maritalStatus", v)}>
+                  <Select
+                    value={patient.maritalStatus}
+                    onValueChange={(v: string) => v && updatePatient("maritalStatus", v)}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Select marital status" />
                     </SelectTrigger>
@@ -757,11 +766,13 @@ export default function EditPatientModalContent({ patientId, onClose }: { patien
                       ))}
                     </SelectContent>
                   </Select>
+                  {apiErrors.marital_status && (
+                    <p className="text-red-500 text-sm">{apiErrors.marital_status}</p>
+                  )}
                 </div>
-                
                 <div>
-                  <Label>Gender</Label>
-                  <Select value={patient.gender} onValueChange={(v) => updatePatient("gender", v)}>
+                  <Label>Gender *</Label>
+                  <Select value={patient.gender} onValueChange={(v: string) => v && updatePatient("gender", v)}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select gender" />
                     </SelectTrigger>
@@ -771,26 +782,26 @@ export default function EditPatientModalContent({ patientId, onClose }: { patien
                       ))}
                     </SelectContent>
                   </Select>
+                  {apiErrors.gender && <p className="text-red-500 text-sm">{apiErrors.gender}</p>}
                 </div>
-                
                 <div>
-                  <Label>Date of Birth</Label>
+                  <Label>Date of Birth *</Label>
                   <Input
                     type="date"
                     value={patient.dateOfBirth}
                     onChange={(e) => updatePatient("dateOfBirth", e.target.value)}
                   />
+                  {apiErrors.date_of_birth && (
+                    <p className="text-red-500 text-sm">{apiErrors.date_of_birth}</p>
+                  )}
                 </div>
-                
                 <div>
                   <Label>Age</Label>
-                  <Input value={patient.age} readOnly className="bg-muted" />
+                  <Input value={patient.age} readOnly className="bg-gray-50" />
                 </div>
               </div>
             </CardContent>
           </Card>
-          
-          {/* Contact Information Section */}
           <Card>
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
@@ -808,8 +819,8 @@ export default function EditPatientModalContent({ patientId, onClose }: { patien
                     onChange={(e) => updatePatient("email", e.target.value)}
                     placeholder="email@example.com"
                   />
+                  {apiErrors.email && <p className="text-red-500 text-sm">{apiErrors.email}</p>}
                 </div>
-                
                 <div>
                   <Label>Phone</Label>
                   <Input
@@ -817,11 +828,14 @@ export default function EditPatientModalContent({ patientId, onClose }: { patien
                     onChange={(e) => updatePatient("phone", e.target.value)}
                     placeholder="Phone number"
                   />
+                  {apiErrors.phone && <p className="text-red-500 text-sm">{apiErrors.phone}</p>}
                 </div>
-                
                 <div>
                   <Label>State of Residence</Label>
-                  <Select value={patient.stateOfResidence} onValueChange={(v) => updatePatient("stateOfResidence", v)}>
+                  <Select
+                    value={patient.stateOfResidence}
+                    onValueChange={(v: string) => v && updatePatient("stateOfResidence", v)}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Select state" />
                     </SelectTrigger>
@@ -831,9 +845,11 @@ export default function EditPatientModalContent({ patientId, onClose }: { patien
                       ))}
                     </SelectContent>
                   </Select>
+                  {apiErrors.state_of_residence && (
+                    <p className="text-red-500 text-sm">{apiErrors.state_of_residence}</p>
+                  )}
                 </div>
               </div>
-              
               <div>
                 <Label>Residential Address</Label>
                 <Input
@@ -841,12 +857,17 @@ export default function EditPatientModalContent({ patientId, onClose }: { patien
                   onChange={(e) => updatePatient("residentialAddress", e.target.value)}
                   placeholder="Current residential address"
                 />
+                {apiErrors.residential_address && (
+                  <p className="text-red-500 text-sm">{apiErrors.residential_address}</p>
+                )}
               </div>
-              
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <Label>State of Origin</Label>
-                  <Select value={patient.stateOfOrigin} onValueChange={(v) => updatePatient("stateOfOrigin", v)}>
+                  <Select
+                    value={patient.stateOfOrigin}
+                    onValueChange={(v: string) => v && updatePatient("stateOfOrigin", v)}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Select state" />
                     </SelectTrigger>
@@ -856,8 +877,10 @@ export default function EditPatientModalContent({ patientId, onClose }: { patien
                       ))}
                     </SelectContent>
                   </Select>
+                  {apiErrors.state_of_origin && (
+                    <p className="text-red-500 text-sm">{apiErrors.state_of_origin}</p>
+                  )}
                 </div>
-                
                 <div>
                   <Label>Local Government Area</Label>
                   <Input
@@ -865,9 +888,11 @@ export default function EditPatientModalContent({ patientId, onClose }: { patien
                     onChange={(e) => updatePatient("localGovernmentArea", e.target.value)}
                     placeholder="Local Government Area"
                   />
+                  {apiErrors.local_government_area && (
+                    <p className="text-red-500 text-sm">{apiErrors.local_government_area}</p>
+                  )}
                 </div>
               </div>
-              
               <div>
                 <Label>Permanent Address</Label>
                 <Input
@@ -875,11 +900,12 @@ export default function EditPatientModalContent({ patientId, onClose }: { patien
                   onChange={(e) => updatePatient("permanentAddress", e.target.value)}
                   placeholder="Permanent home address"
                 />
+                {apiErrors.permanent_address && (
+                  <p className="text-red-500 text-sm">{apiErrors.permanent_address}</p>
+                )}
               </div>
             </CardContent>
           </Card>
-          
-          {/* Medical Details Section */}
           <Card>
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
@@ -891,7 +917,10 @@ export default function EditPatientModalContent({ patientId, onClose }: { patien
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <Label>Blood Group</Label>
-                  <Select value={patient.bloodGroup} onValueChange={(v) => updatePatient("bloodGroup", v)}>
+                  <Select
+                    value={patient.bloodGroup}
+                    onValueChange={(v: string) => v && updatePatient("bloodGroup", v)}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Select blood group" />
                     </SelectTrigger>
@@ -901,11 +930,16 @@ export default function EditPatientModalContent({ patientId, onClose }: { patien
                       ))}
                     </SelectContent>
                   </Select>
+                  {apiErrors.blood_group && (
+                    <p className="text-red-500 text-sm">{apiErrors.blood_group}</p>
+                  )}
                 </div>
-                
                 <div>
                   <Label>Genotype</Label>
-                  <Select value={patient.genotype} onValueChange={(v) => updatePatient("genotype", v)}>
+                  <Select
+                    value={patient.genotype}
+                    onValueChange={(v: string) => v && updatePatient("genotype", v)}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Select genotype" />
                     </SelectTrigger>
@@ -915,12 +949,11 @@ export default function EditPatientModalContent({ patientId, onClose }: { patien
                       ))}
                     </SelectContent>
                   </Select>
+                  {apiErrors.genotype && <p className="text-red-500 text-sm">{apiErrors.genotype}</p>}
                 </div>
               </div>
             </CardContent>
           </Card>
-          
-          {/* Next of Kin Section */}
           <Card>
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
@@ -937,8 +970,10 @@ export default function EditPatientModalContent({ patientId, onClose }: { patien
                     onChange={(e) => updateNok("firstName", e.target.value)}
                     placeholder="First name"
                   />
+                  {apiErrors.nok_first_name && (
+                    <p className="text-red-500 text-sm">{apiErrors.nok_first_name}</p>
+                  )}
                 </div>
-                
                 <div>
                   <Label>Last Name</Label>
                   <Input
@@ -946,13 +981,15 @@ export default function EditPatientModalContent({ patientId, onClose }: { patien
                     onChange={(e) => updateNok("lastName", e.target.value)}
                     placeholder="Last name"
                   />
+                  {apiErrors.nok_last_name && (
+                    <p className="text-red-500 text-sm">{apiErrors.nok_last_name}</p>
+                  )}
                 </div>
-                
                 <div>
                   <Label>Relationship</Label>
                   <Select
                     value={patient.nextOfKin.relationship}
-                    onValueChange={(v) => updateNok("relationship", v)}
+                    onValueChange={(v: string) => v && updateNok("relationship", v)}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select relationship" />
@@ -963,9 +1000,11 @@ export default function EditPatientModalContent({ patientId, onClose }: { patien
                       ))}
                     </SelectContent>
                   </Select>
+                  {apiErrors.nok_relationship && (
+                    <p className="text-red-500 text-sm">{apiErrors.nok_relationship}</p>
+                  )}
                 </div>
               </div>
-              
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <Label>Address</Label>
@@ -974,8 +1013,10 @@ export default function EditPatientModalContent({ patientId, onClose }: { patien
                     onChange={(e) => updateNok("address", e.target.value)}
                     placeholder="Address"
                   />
+                  {apiErrors.nok_address && (
+                    <p className="text-red-500 text-sm">{apiErrors.nok_address}</p>
+                  )}
                 </div>
-                
                 <div>
                   <Label>Phone</Label>
                   <Input
@@ -983,12 +1024,11 @@ export default function EditPatientModalContent({ patientId, onClose }: { patien
                     onChange={(e) => updateNok("phone", e.target.value)}
                     placeholder="Phone number"
                   />
+                  {apiErrors.nok_phone && <p className="text-red-500 text-sm">{apiErrors.nok_phone}</p>}
                 </div>
               </div>
             </CardContent>
           </Card>
-          
-          {/* Submit Button */}
           <Button
             type="submit"
             disabled={isSubmitting}
@@ -997,8 +1037,6 @@ export default function EditPatientModalContent({ patientId, onClose }: { patien
             {isSubmitting ? "Updating..." : "Update Patient"}
           </Button>
         </form>
-        
-        {/* Dialogs */}
         <AlertDialog open={showSwitchConfirm} onOpenChange={setShowSwitchConfirm}>
           <AlertDialogContent>
             <AlertDialogHeader>
@@ -1009,17 +1047,12 @@ export default function EditPatientModalContent({ patientId, onClose }: { patien
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={confirmSwitchCategory}
-                disabled={isSubmitting}
-                className="bg-gray-900 hover:bg-gray-900 text-white"
-              >
+              <AlertDialogAction onClick={confirmSwitchCategory} disabled={isSubmitting}>
                 {isSubmitting ? "Switching..." : "Switch Category"}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-        
         <AlertDialog open={showSuccessDialog} onOpenChange={setShowSuccessDialog}>
           <AlertDialogContent>
             <AlertDialogHeader>
@@ -1027,19 +1060,10 @@ export default function EditPatientModalContent({ patientId, onClose }: { patien
               <AlertDialogDescription>{dialogMessage}</AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogAction
-                onClick={() => {
-                  setShowSuccessDialog(false);
-                  onClose();
-                }}
-                className="bg-gray-900 hover:bg-gray-900 text-white"
-              >
-                OK
-              </AlertDialogAction>
+              <AlertDialogAction onClick={() => setShowSuccessDialog(false)}>OK</AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-        
         <AlertDialog open={showErrorDialog} onOpenChange={setShowErrorDialog}>
           <AlertDialogContent>
             <AlertDialogHeader>
@@ -1047,12 +1071,7 @@ export default function EditPatientModalContent({ patientId, onClose }: { patien
               <AlertDialogDescription>{dialogMessage}</AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogAction
-                onClick={() => setShowErrorDialog(false)}
-                className="bg-gray-900 hover:bg-gray-900 text-white"
-              >
-                OK
-              </AlertDialogAction>
+              <AlertDialogAction onClick={() => setShowErrorDialog(false)}>OK</AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>

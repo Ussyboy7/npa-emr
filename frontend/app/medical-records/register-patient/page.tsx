@@ -1,14 +1,12 @@
 "use client";
 import React, { useState } from "react";
 import { Input } from "@/components/ui/input";
-import { Select, SelectItem, SelectTrigger, SelectValue, SelectContent } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/lib/toast";
 import { Search, User } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { Separator } from "@/components/ui/separator";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,22 +19,62 @@ import {
 } from "@/components/ui/alert-dialog";
 import Link from "next/link";
 
-// Constants (assume in /lib/constants.ts)
-import {
-  nameTitles,
-  locations,
-  divisions,
-  employeeTypes,
-  maritalStatuses,
-  genders,
-  bloodGroups,
-  genotypes,
-  nokRelationships,
-  nigerianStates,
-  NON_NPA_TYPES,
-} from "@/lib/constants";
+// Constants - matching your backend model choices 
+const nameTitles = ["Mr", "Mrs", "Miss", "Master", "Engr", "Dr"] as const;
+const locations = [
+  "Headquarters",
+  "Bode Thomas Clinic",
+  "Lagos Port Complex",
+  "Tincan Island Port Complex",
+  "Rivers Port Complex",
+  "Onne Port Complex",
+  "Delta Port Complex",
+  "Calabar Port",
+  "Lekki Deep Sea Port",
+] as const;
+const divisions = [
+  "Engineering",
+  "Land & Asset Administration",
+  "Marine and Operations",
+  "Monitoring & Regulation",
+  "HSE",
+  "Security",
+  "Port Managers",
+  "HR",
+  "Medical",
+  "Admin",
+  "Finance",
+  "Superannuation & Investment",
+  "Enterprise Risk Management",
+  "Procurement",
+  "Corporate & Strategic Communications",
+  "Corporate & Strategic Planning",
+  "Legal Services",
+  "Audit",
+  "ICT",
+  "PPP",
+  "Abuja Liaison Office",
+  "Servicom",
+  "Overseas Liaison Office",
+  "MD's Office",
+] as const;
+const employeeTypes = ["Officer", "Staff"] as const;
+const maritalStatuses = ["Single", "Married", "Divorced", "Widowed"] as const;
+const genders = ["Male", "Female"] as const;
+const bloodGroups = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"] as const;
+const genotypes = ["AA", "AS", "SS", "AC", "SC"] as const;
+const nokRelationships = ["Spouse", "Parent", "Sibling", "Child"] as const;
+const NON_NPA_TYPES = ["Police", "IT", "NYSC", "CSR", "MD Outfit", "Board Member", "Seaview"] as const;
+const nigerianStates = [
+  "Abia", "Adamawa", "Akwa Ibom", "Anambra", "Bauchi", "Bayelsa", "Benue", "Borno",
+  "Cross River", "Delta", "Ebonyi", "Edo", "Ekiti", "Enugu", "FCT", "Gombe", "Imo",
+  "Jigawa", "Kaduna", "Kano", "Katsina", "Kebbi", "Kogi", "Kwara", "Lagos", "Nasarawa",
+  "Niger", "Ogun", "Ondo", "Osun", "Oyo", "Plateau", "Rivers", "Sokoto", "Taraba",
+  "Yobe", "Zamfara",
+] as const;
 
 type EmployeeCategory = "Employee" | "Retiree" | "NonNPA" | "Dependent";
+type DependentType = "Employee Dependent" | "Retiree Dependent" | "";
 
 interface NextOfKin {
   firstName: string;
@@ -48,10 +86,11 @@ interface NextOfKin {
 
 interface Patient {
   employeeCategory: EmployeeCategory;
-  dependentType?: "Employee Dependent" | "Retiree Dependent" | "";
+  dependentType: DependentType;
   searchNumber: string;
   personalNumber: string;
   sponsorId?: string;
+  sponsorName?: string;
   title: string;
   surname: string;
   firstName: string;
@@ -76,6 +115,7 @@ interface Patient {
   nonnpaType: string;
   nextOfKin: NextOfKin;
   relationship?: string;
+  patientId?: string;
 }
 
 const EMPTY_NOK: NextOfKin = {
@@ -91,7 +131,8 @@ const makeEmptyPatient = (category: EmployeeCategory): Patient => ({
   dependentType: "",
   searchNumber: "",
   personalNumber: "",
-  sponsorId: "",
+  sponsorId: undefined,
+  sponsorName: undefined,
   title: "",
   surname: "",
   firstName: "",
@@ -118,7 +159,7 @@ const makeEmptyPatient = (category: EmployeeCategory): Patient => ({
   relationship: category === "Dependent" ? "" : undefined,
 });
 
-const calculateAge = (dob: string) => {
+const calculateAge = (dob: string): string => {
   if (!dob) return "";
   const d = new Date(dob);
   if (isNaN(d.getTime())) return "";
@@ -127,6 +168,40 @@ const calculateAge = (dob: string) => {
   const m = today.getMonth() - d.getMonth();
   if (m < 0 || (m === 0 && today.getDate() < d.getDate())) age--;
   return String(age);
+};
+
+// Generate patient ID based on category and other data
+const generatePatientId = (category: EmployeeCategory, patient: Patient, sponsorDetails?: any): string => {
+  let prefix = "";
+  let code = "";
+  
+  if (category === "Employee") {
+    code = patient.personalNumber || "UNK";
+    prefix = `E-${code}`;
+  } else if (category === "Retiree") {
+    code = patient.personalNumber || "UNK";
+    prefix = `R-${code}`;
+  } else if (category === "Dependent") {
+    // For dependents, use sponsor's personal number
+    code = sponsorDetails?.personalNumber || "SPN";
+    prefix = patient.dependentType === "Employee Dependent" ? `ED-${code}` : `RD-${code}`;
+  } else if (category === "NonNPA") {
+    code = patient.nonnpaType;
+    prefix = `NN-${code}`;
+  }
+  
+  // Generate a sequence number (for demo purposes, using timestamp)
+  // In a real app, this should come from the backend
+  let sequence = String(Math.floor(Math.random() * 1000) + 1);
+  
+  // Adjust the number of digits based on category
+  if (category === "Dependent") {
+    sequence = sequence.padStart(2, '0');
+  } else {
+    sequence = sequence.padStart(3, '0');
+  }
+  
+  return `${prefix}-${sequence}`;
 };
 
 export default function RegisterPatient() {
@@ -143,9 +218,11 @@ export default function RegisterPatient() {
   const [showErrorDialog, setShowErrorDialog] = useState(false);
   const [dialogMessage, setDialogMessage] = useState("");
   const [apiErrors, setApiErrors] = useState<Record<string, string>>({});
+  const [generatedPatientId, setGeneratedPatientId] = useState<string | null>(null);
+  const [sponsorDetails, setSponsorDetails] = useState<any>(null);
 
   const updatePatient = <K extends keyof Patient>(field: K, value: Patient[K]) => {
-    setPatient((prev) => {
+    setPatient((prev: Patient) => {
       const next = { ...prev, [field]: value } as Patient;
       if (field === "dateOfBirth") {
         next.age = calculateAge(String(value));
@@ -155,13 +232,14 @@ export default function RegisterPatient() {
   };
 
   const updateNok = <K extends keyof NextOfKin>(field: K, value: NextOfKin[K]) => {
-    setPatient((prev) => ({
+    setPatient((prev: Patient) => ({
       ...prev,
       nextOfKin: { ...prev.nextOfKin, [field]: value },
     }));
   };
 
   const switchCategory = (newCat: EmployeeCategory) => {
+    if (newCat === category) return;
     setPendingCategory(newCat);
     setShowSwitchConfirm(true);
   };
@@ -175,6 +253,8 @@ export default function RegisterPatient() {
       setPhoto(null);
       setPhotoPreview(null);
       setApiErrors({});
+      setGeneratedPatientId(null);
+      setSponsorDetails(null);
       toast({ title: "Category Switched", description: `Switched to ${pendingCategory} category. Fields reset.` });
     }
   };
@@ -185,7 +265,7 @@ export default function RegisterPatient() {
   };
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files ? e.target.files[0] : null;
+    const file = e.target.files?.[0] || null;
     if (file && file.size > 2 * 1024 * 1024) {
       setDialogMessage("Photo size must be less than 2MB.");
       setShowErrorDialog(true);
@@ -212,13 +292,17 @@ export default function RegisterPatient() {
       return;
     }
     setIsSearching(true);
+    setApiErrors({});
+    
     try {
       const baseURL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
       const res = await fetch(`${baseURL}/api/patients/search/?q=${patient.searchNumber}`, {
         headers: {
           "Content-Type": "application/json",
+          "Authorization": `Bearer ${localStorage.getItem('token') || ''}`,
         },
       });
+      
       if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: "Search failed" }));
         if (res.status === 404) {
@@ -226,25 +310,53 @@ export default function RegisterPatient() {
             `Sponsor with personal number ${patient.searchNumber} not found. Please register the Employee or Retiree first.`
           );
         }
-        const errorMsg =
-          err.detail ||
-          Object.entries(err)
-            .map(([key, value]) => `${key}: ${Array.isArray(value) ? value[0] : value}`)
-            .join(", ") ||
-          `Search failed (Status: ${res.status})`;
+        const errorMsg = err.detail || Object.entries(err).map(([key, value]) => `${key}: ${Array.isArray(value) ? value[0] : value}`).join(", ") || `Search failed (Status: ${res.status})`;
         throw new Error(errorMsg);
       }
+      
       const data = await res.json();
-      if (data.patient_type !== "Employee" && data.patient_type !== "Retiree") {
-        throw new Error("Selected patient is not an Employee or Retiree. Please search for a valid sponsor.");
+      
+      // Check if multiple results
+      const results = Array.isArray(data) ? data : [data];
+      const sponsor = results.find((p: any) => p.patient_type === "Employee" || p.patient_type === "Retiree");
+      
+      if (!sponsor) {
+        throw new Error("No Employee or Retiree found with this personal number. Please search for a valid sponsor.");
       }
-      setPatient((prev) => ({
+
+      // Check dependent limits
+      const dependentCount = await checkDependentCount(sponsor.id);
+      const maxDependents = sponsor.patient_type === "Employee" ? 5 : 1;
+      
+      if (dependentCount >= maxDependents) {
+        throw new Error(`This ${sponsor.patient_type.toLowerCase()} already has the maximum number of dependents (${maxDependents}).`);
+      }
+      
+      // Store sponsor details for patient ID generation
+      setSponsorDetails({
+        id: sponsor.id || "",
+        personalNumber: sponsor.personal_number || "",
+        division: sponsor.division || "",
+        patientType: sponsor.patient_type || ""
+      });
+      
+      setPatient((prev: Patient) => ({
         ...prev,
-        sponsorId: data.id || "",
-        personalNumber: data.personal_number || "",
-        dependentType: data.patient_type === "Employee" ? "Employee Dependent" : "Retiree Dependent",
+        sponsorId: sponsor.id || "",
+        sponsorName: `${sponsor.surname || ''} ${sponsor.first_name || ''}`.trim(),
+        personalNumber: sponsor.personal_number || "",
+        dependentType: sponsor.patient_type === "Employee" ? "Employee Dependent" : "Retiree Dependent",
       }));
-      toast({ title: "Success", description: "Sponsor found and fields populated." });
+      
+      // Generate patient ID preview for dependent
+      const patientId = generatePatientId("Dependent", patient, sponsor);
+      setGeneratedPatientId(patientId);
+      
+      toast({ 
+        title: "Success", 
+        description: `Sponsor found: ${sponsor.surname} ${sponsor.first_name} (${sponsor.patient_type})` 
+      });
+      
     } catch (err: any) {
       const errorMessage = err.message || "Unexpected error during search. Check network or console.";
       setDialogMessage(errorMessage);
@@ -256,13 +368,36 @@ export default function RegisterPatient() {
     }
   };
 
+  const checkDependentCount = async (sponsorId: string): Promise<number> => {
+    try {
+      const baseURL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const res = await fetch(`${baseURL}/api/patients/?sponsor_id=${sponsorId}&patient_type=Dependent`, {
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${localStorage.getItem('token') || ''}`,
+        },
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        return (data.results || data).length;
+      }
+      return 0;
+    } catch (error) {
+      console.error("Error checking dependent count:", error);
+      return 0;
+    }
+  };
+
   const validate = (): { ok: boolean; message?: string } => {
     if (!patient.surname.trim() || !patient.firstName.trim()) {
       return { ok: false, message: "Please provide Surname and First Name." };
     }
+    
     if ((category === "Employee" || category === "Retiree") && !patient.personalNumber.trim()) {
       return { ok: false, message: "Personal Number is required." };
     }
+    
     if (category === "Dependent") {
       if (!patient.sponsorId) {
         return { ok: false, message: "Please search for a valid Employee or Retiree sponsor first." };
@@ -274,23 +409,37 @@ export default function RegisterPatient() {
         return { ok: false, message: "Please select Relationship." };
       }
     }
+    
     if (category === "Employee") {
       if (!patient.type || !patient.division || !patient.location) {
         return { ok: false, message: "Type, Division, and Location are required for Employees." };
       }
     }
+    
     if (category === "NonNPA" && !patient.nonnpaType) {
       return { ok: false, message: "Please select a Non-NPA Category." };
     }
+    
+    if (!patient.gender) {
+      return { ok: false, message: "Please select Gender." };
+    }
+    
+    if (!patient.dateOfBirth) {
+      return { ok: false, message: "Please provide Date of Birth." };
+    }
+    
     if (patient.email && !/^\S+@\S+\.\S+$/.test(patient.email)) {
       return { ok: false, message: "Please enter a valid email." };
     }
+    
     if (photo && !photo.type.startsWith("image/")) {
       return { ok: false, message: "Photo must be an image file." };
     }
+    
     if (patient.dateOfBirth && new Date(patient.dateOfBirth) > new Date()) {
       return { ok: false, message: "Date of Birth cannot be in the future." };
     }
+    
     return { ok: true };
   };
 
@@ -302,12 +451,19 @@ export default function RegisterPatient() {
       setShowErrorDialog(true);
       return;
     }
+    
     setIsSubmitting(true);
     setApiErrors({});
+    
     try {
+      // Generate patient ID based on category
+      const patientId = generatePatientId(category, patient, sponsorDetails);
+      setGeneratedPatientId(patientId);
+      
       const baseURL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
       const endpoint = `${baseURL}/api/patients/`;
       const formData = new FormData();
+      
       formData.append("patient_type", category);
       formData.append("title", patient.title);
       formData.append("surname", patient.surname);
@@ -331,7 +487,12 @@ export default function RegisterPatient() {
       formData.append("nok_relationship", patient.nextOfKin.relationship);
       formData.append("nok_address", patient.nextOfKin.address);
       formData.append("nok_phone", patient.nextOfKin.phone);
+      
+      // Add generated patient ID
+      formData.append("patient_id", patientId);
+      
       if (photo) formData.append("photo", photo);
+      
       if (category === "Employee") {
         formData.append("personal_number", patient.personalNumber);
         formData.append("type", patient.type);
@@ -346,10 +507,15 @@ export default function RegisterPatient() {
       } else if (category === "NonNPA") {
         formData.append("non_npa_type", patient.nonnpaType);
       }
+      
       const res = await fetch(endpoint, {
         method: "POST",
+        headers: {
+          "Authorization": `Bearer ${localStorage.getItem('token') || ''}`,
+        },
         body: formData,
       });
+      
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         console.error("Submit failed:", err);
@@ -363,13 +529,17 @@ export default function RegisterPatient() {
         setShowErrorDialog(true);
         return;
       }
+      
       const data = await res.json();
-      setDialogMessage(`Patient registered successfully! Patient ID: ${data.patient_id}`);
+      setDialogMessage(`Patient registered successfully! Patient ID: ${patientId}`);
       setShowSuccessDialog(true);
       setPatient(makeEmptyPatient(category));
       setPhoto(null);
       setPhotoPreview(null);
       setApiErrors({});
+      setGeneratedPatientId(null);
+      setSponsorDetails(null);
+      
     } catch (err: any) {
       console.error("Submit error:", err, err.stack);
       setDialogMessage(err.message || "Unexpected error occurred - check network or console.");
@@ -398,25 +568,21 @@ export default function RegisterPatient() {
         <form onSubmit={handleSubmit} className="space-y-8">
           <div>
             <Label className="text-lg font-semibold mb-2 block">Patient Category</Label>
-            <ToggleGroup
-              type="single"
-              value={category}
-              onValueChange={(value) => value && switchCategory(value as EmployeeCategory)}
-              className="flex flex-wrap gap-2"
-            >
-              {(["Employee", "Retiree", "NonNPA", "Dependent"] as EmployeeCategory[]).map((c) => (
-                <ToggleGroupItem
+            <div className="flex flex-wrap gap-2">
+              {(["Employee", "Retiree", "NonNPA", "Dependent"] as const).map((c) => (
+                <Button
                   key={c}
-                  value={c}
-                  variant="outline"
-                  className="flex-1 min-w-[120px] data-[state=on]:bg-gray-900 data-[state=on]:text-white"
+                  type="button"
+                  variant={category === c ? "default" : "outline"}
+                  onClick={() => switchCategory(c)}
+                  className="flex-1 min-w-[120px]"
                 >
                   {c}
-                </ToggleGroupItem>
+                </Button>
               ))}
-            </ToggleGroup>
+            </div>
           </div>
-          <Separator />
+
           {showSponsorSearch && (
             <Card>
               <CardHeader className="pb-4">
@@ -430,7 +596,7 @@ export default function RegisterPatient() {
                   <Input
                     value={patient.searchNumber}
                     onChange={(e) => updatePatient("searchNumber", e.target.value)}
-                    placeholder="Enter sponsor personal number"
+                    placeholder="Enter sponsor personal number (e.g., NPA001234)"
                   />
                   <Button
                     type="button"
@@ -441,18 +607,51 @@ export default function RegisterPatient() {
                     {isSearching ? "Searching..." : "Search"}
                   </Button>
                 </div>
-                {showErrorDialog && dialogMessage.includes("not found") && (
-                  <p className="text-sm text-muted-foreground mt-2">
-                    Sponsor not found. Please{" "}
-                    <Link href="/medical-records/register-patient" className="text-blue-500 underline">
-                      register the Employee or Retiree
-                    </Link>{" "}
-                    first.
-                  </p>
+                
+                {patient.sponsorName && (
+                  <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-md">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <Label>Sponsor Found</Label>
+                        <p className="font-medium text-green-700">{patient.sponsorName}</p>
+                      </div>
+                      <div>
+                        <Label>Dependent Type</Label>
+                        <p className="font-medium text-green-700">{patient.dependentType}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                {apiErrors.sponsor_id && (
+                  <p className="text-red-500 text-sm mt-2">{apiErrors.sponsor_id}</p>
                 )}
               </CardContent>
             </Card>
           )}
+
+          {/* Generated Patient ID Preview */}
+          {generatedPatientId && (
+            <Card className="border-blue-200 bg-blue-50/30">
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2 text-blue-700">
+                  <User className="h-5 w-5" />
+                  Patient ID Preview
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-2">
+                  <div className="text-lg font-mono font-bold bg-white px-4 py-2 rounded border border-blue-200">
+                    {generatedPatientId}
+                  </div>
+                  <p className="text-sm text-gray-600">
+                    This ID will be used to identify the patient in the system
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           <Card>
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
@@ -474,11 +673,9 @@ export default function RegisterPatient() {
                   {apiErrors.personal_number && (
                     <p className="text-red-500 text-sm">{apiErrors.personal_number}</p>
                   )}
-                  {apiErrors.sponsor_id && (
-                    <p className="text-red-500 text-sm">{apiErrors.sponsor_id}</p>
-                  )}
                 </div>
               )}
+              
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="md:row-span-2 flex flex-col items-center justify-center">
                   <div className="w-32 h-32 rounded-full overflow-hidden bg-gray-200 flex items-center justify-center mb-2">
@@ -501,9 +698,10 @@ export default function RegisterPatient() {
                     </Button>
                   </Label>
                 </div>
+                
                 <div>
                   <Label>Title</Label>
-                  <Select value={patient.title} onValueChange={(v: string) => v && updatePatient("title", v)}>
+                  <Select value={patient.title} onValueChange={(v: string) => updatePatient("title", v)}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select title" />
                     </SelectTrigger>
@@ -515,6 +713,7 @@ export default function RegisterPatient() {
                   </Select>
                   {apiErrors.title && <p className="text-red-500 text-sm">{apiErrors.title}</p>}
                 </div>
+                
                 <div>
                   <Label>Surname *</Label>
                   <Input
@@ -524,6 +723,7 @@ export default function RegisterPatient() {
                   />
                   {apiErrors.surname && <p className="text-red-500 text-sm">{apiErrors.surname}</p>}
                 </div>
+                
                 <div>
                   <Label>First Name *</Label>
                   <Input
@@ -533,6 +733,7 @@ export default function RegisterPatient() {
                   />
                   {apiErrors.first_name && <p className="text-red-500 text-sm">{apiErrors.first_name}</p>}
                 </div>
+                
                 <div>
                   <Label>Last Name</Label>
                   <Input
@@ -545,6 +746,7 @@ export default function RegisterPatient() {
               </div>
             </CardContent>
           </Card>
+
           <Card>
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
@@ -558,7 +760,7 @@ export default function RegisterPatient() {
                   <>
                     <div>
                       <Label>Type *</Label>
-                      <Select value={patient.type} onValueChange={(v: string) => v && updatePatient("type", v)}>
+                      <Select value={patient.type} onValueChange={(v: string) => updatePatient("type", v)}>
                         <SelectTrigger>
                           <SelectValue placeholder="Select type" />
                         </SelectTrigger>
@@ -572,7 +774,7 @@ export default function RegisterPatient() {
                     </div>
                     <div>
                       <Label>Division *</Label>
-                      <Select value={patient.division} onValueChange={(v: string) => v && updatePatient("division", v)}>
+                      <Select value={patient.division} onValueChange={(v: string) => updatePatient("division", v)}>
                         <SelectTrigger>
                           <SelectValue placeholder="Select division" />
                         </SelectTrigger>
@@ -586,7 +788,7 @@ export default function RegisterPatient() {
                     </div>
                     <div>
                       <Label>Location *</Label>
-                      <Select value={patient.location} onValueChange={(v: string) => v && updatePatient("location", v)}>
+                      <Select value={patient.location} onValueChange={(v: string) => updatePatient("location", v)}>
                         <SelectTrigger>
                           <SelectValue placeholder="Select location" />
                         </SelectTrigger>
@@ -600,12 +802,13 @@ export default function RegisterPatient() {
                     </div>
                   </>
                 )}
+                
                 {showNonNpaType && (
                   <div className="md:col-span-1">
                     <Label>Non-NPA Category *</Label>
                     <Select
                       value={patient.nonnpaType}
-                      onValueChange={(v: string) => v && updatePatient("nonnpaType", v)}
+                      onValueChange={(v: string) => updatePatient("nonnpaType", v)}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select Non-NPA category" />
@@ -621,22 +824,16 @@ export default function RegisterPatient() {
                     )}
                   </div>
                 )}
+                
                 {isDependent && (
                   <>
                     <div className="md:col-span-1">
                       <Label>Dependent Type *</Label>
-                      <Select
-                        value={patient.dependentType || ""}
-                        onValueChange={(v: string) => v && updatePatient("dependentType", v as Patient["dependentType"])}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select dependent type" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Employee Dependent">Employee Dependent</SelectItem>
-                          <SelectItem value="Retiree Dependent">Retiree Dependent</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <Input
+                        value={patient.dependentType}
+                        readOnly
+                        className="bg-gray-50"
+                      />
                       {apiErrors.dependent_type && (
                         <p className="text-red-500 text-sm">{apiErrors.dependent_type}</p>
                       )}
@@ -645,7 +842,7 @@ export default function RegisterPatient() {
                       <Label>Relationship *</Label>
                       <Select
                         value={patient.relationship || ""}
-                        onValueChange={(v: string) => v && updatePatient("relationship", v)}
+                        onValueChange={(v: string) => updatePatient("relationship", v)}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Select relationship" />
@@ -662,11 +859,12 @@ export default function RegisterPatient() {
                     </div>
                   </>
                 )}
+                
                 <div>
                   <Label>Marital Status</Label>
                   <Select
                     value={patient.maritalStatus}
-                    onValueChange={(v: string) => v && updatePatient("maritalStatus", v)}
+                    onValueChange={(v: string) => updatePatient("maritalStatus", v)}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select marital status" />
@@ -681,9 +879,10 @@ export default function RegisterPatient() {
                     <p className="text-red-500 text-sm">{apiErrors.marital_status}</p>
                   )}
                 </div>
+                
                 <div>
                   <Label>Gender *</Label>
-                  <Select value={patient.gender} onValueChange={(v: string) => v && updatePatient("gender", v)}>
+                  <Select value={patient.gender} onValueChange={(v: string) => updatePatient("gender", v)}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select gender" />
                     </SelectTrigger>
@@ -695,6 +894,7 @@ export default function RegisterPatient() {
                   </Select>
                   {apiErrors.gender && <p className="text-red-500 text-sm">{apiErrors.gender}</p>}
                 </div>
+                
                 <div>
                   <Label>Date of Birth *</Label>
                   <Input
@@ -706,6 +906,7 @@ export default function RegisterPatient() {
                     <p className="text-red-500 text-sm">{apiErrors.date_of_birth}</p>
                   )}
                 </div>
+                
                 <div>
                   <Label>Age</Label>
                   <Input value={patient.age} readOnly className="bg-gray-50" />
@@ -713,6 +914,7 @@ export default function RegisterPatient() {
               </div>
             </CardContent>
           </Card>
+
           <Card>
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
@@ -745,7 +947,7 @@ export default function RegisterPatient() {
                   <Label>State of Residence</Label>
                   <Select
                     value={patient.stateOfResidence}
-                    onValueChange={(v: string) => v && updatePatient("stateOfResidence", v)}
+                    onValueChange={(v: string) => updatePatient("stateOfResidence", v)}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select state" />
@@ -777,7 +979,7 @@ export default function RegisterPatient() {
                   <Label>State of Origin</Label>
                   <Select
                     value={patient.stateOfOrigin}
-                    onValueChange={(v: string) => v && updatePatient("stateOfOrigin", v)}
+                    onValueChange={(v: string) => updatePatient("stateOfOrigin", v)}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select state" />
@@ -817,6 +1019,7 @@ export default function RegisterPatient() {
               </div>
             </CardContent>
           </Card>
+
           <Card>
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
@@ -830,7 +1033,7 @@ export default function RegisterPatient() {
                   <Label>Blood Group</Label>
                   <Select
                     value={patient.bloodGroup}
-                    onValueChange={(v: string) => v && updatePatient("bloodGroup", v)}
+                    onValueChange={(v: string) => updatePatient("bloodGroup", v)}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select blood group" />
@@ -849,7 +1052,7 @@ export default function RegisterPatient() {
                   <Label>Genotype</Label>
                   <Select
                     value={patient.genotype}
-                    onValueChange={(v: string) => v && updatePatient("genotype", v)}
+                    onValueChange={(v: string) => updatePatient("genotype", v)}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select genotype" />
@@ -865,6 +1068,7 @@ export default function RegisterPatient() {
               </div>
             </CardContent>
           </Card>
+
           <Card>
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
@@ -900,7 +1104,7 @@ export default function RegisterPatient() {
                   <Label>Relationship</Label>
                   <Select
                     value={patient.nextOfKin.relationship}
-                    onValueChange={(v: string) => v && updateNok("relationship", v)}
+                    onValueChange={(v: string) => updateNok("relationship", v)}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select relationship" />
@@ -940,6 +1144,7 @@ export default function RegisterPatient() {
               </div>
             </CardContent>
           </Card>
+
           <Button
             type="submit"
             disabled={isSubmitting}
@@ -948,22 +1153,28 @@ export default function RegisterPatient() {
             {isSubmitting ? "Submitting..." : "Register Patient"}
           </Button>
         </form>
+
+        {/* Switch Category Confirmation Dialog */}
         <AlertDialog open={showSwitchConfirm} onOpenChange={setShowSwitchConfirm}>
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Switch Category</AlertDialogTitle>
               <AlertDialogDescription>
-                Are you sure you want to switch to {pendingCategory}? This will reset some fields.
+                Are you sure you want to switch to {pendingCategory}? This will reset all fields.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel>
+              <AlertDialogCancel onClick={cancelSwitchCategory} disabled={isSubmitting}>
+                Cancel
+              </AlertDialogCancel>
               <AlertDialogAction onClick={confirmSwitchCategory} disabled={isSubmitting}>
-                {isSubmitting ? "Switching..." : "Switch Category"}
+                Switch Category
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {/* Success Dialog */}
         <AlertDialog open={showSuccessDialog} onOpenChange={setShowSuccessDialog}>
           <AlertDialogContent>
             <AlertDialogHeader>
@@ -971,10 +1182,14 @@ export default function RegisterPatient() {
               <AlertDialogDescription>{dialogMessage}</AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogAction onClick={() => setShowSuccessDialog(false)}>OK</AlertDialogAction>
+              <AlertDialogAction onClick={() => setShowSuccessDialog(false)}>
+                OK
+              </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {/* Error Dialog */}
         <AlertDialog open={showErrorDialog} onOpenChange={setShowErrorDialog}>
           <AlertDialogContent>
             <AlertDialogHeader>
@@ -982,7 +1197,9 @@ export default function RegisterPatient() {
               <AlertDialogDescription>{dialogMessage}</AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogAction onClick={() => setShowErrorDialog(false)}>OK</AlertDialogAction>
+              <AlertDialogAction onClick={() => setShowErrorDialog(false)}>
+                OK
+              </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>

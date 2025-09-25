@@ -44,8 +44,10 @@ import { ViewVitalsModal } from "@/components/nurse/viewvitals";
 import ConsultationRoomPicker from "@/components/nurse/consultationroompicker";
 import { useRouter } from "next/navigation";
 import { Label } from "@/components/ui/label";
+import React from "react";
+import { toast } from "@/lib/toast";
 
-// Standardized interfaces
+// Improved type definitions
 interface VitalsData {
   id?: string;
   height: string;
@@ -69,6 +71,7 @@ interface ConsultationRoom {
   id: string;
   name: string;
   status: "available" | "occupied";
+  queue?: { patient_id: string; position: number }[];
 }
 
 interface Patient {
@@ -87,6 +90,7 @@ interface Patient {
     | "Confirmed"
     | "In Progress"
     | "In Nursing Pool"
+    | "Queued"
     | "Completed"
     | "Cancelled"
     | "Rescheduled"
@@ -119,6 +123,68 @@ interface ViewVitalsData {
   recordedBy: string;
   alerts: string[];
 }
+
+// Improved error handling
+const handleError = (error: unknown, context: string) => {
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  console.error(`${context}:`, errorMessage);
+  return errorMessage;
+};
+
+// Improved WebSocket hook
+const useWebSocket = (url: string, onMessage: (data: any) => void) => {
+  const [wsConnected, setWsConnected] = useState(false);
+  const [usePolling, setUsePolling] = useState(false);
+  const wsRef = React.useRef<WebSocket | null>(null);
+
+  useEffect(() => {
+    try {
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const wsUrl = `${protocol}${url}`;
+      
+      wsRef.current = new WebSocket(wsUrl);
+      
+      wsRef.current.onopen = () => {
+        console.log("WebSocket connected");
+        setWsConnected(true);
+        setUsePolling(false);
+      };
+      
+      wsRef.current.onmessage = (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          onMessage(data);
+        } catch (error) {
+          console.error("Error parsing WebSocket message:", error);
+        }
+      };
+      
+      wsRef.current.onerror = (err) => {
+        console.error("WebSocket error:", err);
+        setWsConnected(false);
+        setUsePolling(true);
+      };
+      
+      wsRef.current.onclose = () => {
+        console.log("WebSocket closed");
+        setWsConnected(false);
+        setUsePolling(true);
+      };
+    } catch (err) {
+      console.error("WebSocket setup error:", err);
+      setWsConnected(false);
+      setUsePolling(true);
+    }
+
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+    };
+  }, [url]);
+
+  return { wsConnected, usePolling };
+};
 
 // Helper functions
 const formatTime = (dateString: string, timeString: string) => {
@@ -415,10 +481,40 @@ const PoolQueue = () => {
   
   const pageSize = 10;
   
+  // WebSocket setup
+  const handleWebSocketMessage = (data: any) => {
+    if (data.type === 'queue.update') {
+      setPatients((prev: Patient[]) => {
+        const updated = prev.map(p => 
+          p.id === data.data.id 
+            ? { ...p, ...data.data, updated_at: new Date().toISOString() } 
+            : p
+        );
+        
+        if (!prev.some(p => p.id === data.data.id)) {
+          return [data.data, ...updated].slice(0, pageSize);
+        }
+        
+        return updated;
+      });
+      
+      toast({
+        title: "Queue Updated",
+        description: `Patient ${data.data.name} status: ${data.data.status}`,
+        variant: "success",
+      });
+    }
+  };
+
+  const { wsConnected, usePolling } = useWebSocket(
+    `${window.location.host}/ws/nurse-queue/`,
+    handleWebSocketMessage
+  );
+  
   // Fetch patients from API
   const fetchPatients = useCallback(async () => {
-    setIsLoading(true);
     try {
+      setIsLoading(true);
       const params = new URLSearchParams({
         ...(statusFilter !== "all" && { status: statusFilter }),
         page: String(currentPage),
@@ -478,7 +574,8 @@ const PoolQueue = () => {
       
       setPatients(mappedPatients);
     } catch (err) {
-      setError("Failed to fetch patient data");
+      const errorMessage = handleError(err, "Fetch patients error");
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -501,22 +598,21 @@ const PoolQueue = () => {
     }
   }, [API_URL]);
   
-  // Auto-refresh every 30s
+  // Auto-refresh every 30s when using polling
   useEffect(() => {
-    fetchPatients();
-    fetchConsultationRooms();
-    
-    const interval = setInterval(() => {
-      handleRefresh();
-    }, 30000);
-    
-    return () => clearInterval(interval);
-  }, [fetchPatients, fetchConsultationRooms]);
+    if (usePolling) {
+      const interval = setInterval(() => {
+        handleRefresh();
+      }, 30000);
+      
+      return () => clearInterval(interval);
+    }
+  }, [usePolling]);
   
   // Initialize vitals alerts for existing patients
   useEffect(() => {
-    setPatients((prevPatients) =>
-      prevPatients.map((patient) => ({
+    setPatients((prev: Patient[]) =>
+      prev.map((patient) => ({
         ...patient,
         vitalsAlerts:
           patient.vitals && !patient.vitalsAlerts
@@ -533,7 +629,8 @@ const PoolQueue = () => {
       await fetchPatients();
       await fetchConsultationRooms();
     } catch (err) {
-      setError("Failed to refresh patient data");
+      const errorMessage = handleError(err, "Refresh error");
+      setError(errorMessage);
     } finally {
       setIsRefreshing(false);
     }
@@ -572,13 +669,37 @@ const PoolQueue = () => {
     return filtered;
   }, [patients, statusFilter, priorityFilter, clinicFilter, searchTerm]);
   
-  // Enhanced sorting
+  // Enhanced sorting with priority for new patients in nursing pool
+  const statusOrder = {
+    "In Nursing Pool": 0,
+    "Queued": 1,
+    "In Progress": 2,
+    "Scheduled": 3,
+    "Confirmed": 4,
+    "Sent to Injection": 5,
+    "Sent to Dressing": 5,
+    "Sent to Ward": 5,
+    "Completed": 6,
+    "Cancelled": 7,
+    "Rescheduled": 8,
+  };
+  
   const priorityOrder = { Emergency: 0, High: 1, Medium: 2, Low: 3 };
+  
   const sortedPatients = useMemo(() => {
     return [...filteredPatients].sort((a, b) => {
-      const prioDiff =
-        (priorityOrder[a.priority] || 4) - (priorityOrder[b.priority] || 4);
+      // First, by status - nursing pool patients at top
+      const statusA = statusOrder[a.status] || 10;
+      const statusB = statusOrder[b.status] || 10;
+      if (statusA !== statusB) {
+        return statusA - statusB;
+      }
+      
+      // Then, by priority
+      const prioDiff = (priorityOrder[a.priority] || 4) - (priorityOrder[b.priority] || 4);
       if (prioDiff !== 0) return prioDiff;
+      
+      // Finally, by arrival time
       return new Date(`${a.visitDate}T${a.visitTime}`).getTime() - 
              new Date(`${b.visitDate}T${b.visitTime}`).getTime();
     });
@@ -609,6 +730,8 @@ const PoolQueue = () => {
     switch (status) {
       case "In Nursing Pool":
         return "bg-cyan-100 text-cyan-800 border-cyan-200";
+      case "Queued":
+        return "bg-purple-100 text-purple-800 border-purple-200";
       case "In Progress":
         return "bg-yellow-100 text-yellow-800 border-yellow-200";
       case "Completed":
@@ -659,7 +782,8 @@ const PoolQueue = () => {
       setVitalsDialogOpen(true);
       setError(null);
     } catch (err) {
-      setError("Failed to open vitals form");
+      const errorMessage = handleError(err, "Record vitals error");
+      setError(errorMessage);
     }
   }, []);
   
@@ -676,7 +800,8 @@ const PoolQueue = () => {
         setError("No vitals data found for this patient");
       }
     } catch (err) {
-      setError("Failed to open vitals form");
+      const errorMessage = handleError(err, "Edit vitals error");
+      setError(errorMessage);
     }
   }, [patients]);
   
@@ -735,10 +860,10 @@ const PoolQueue = () => {
 
       if (!visitResponse.ok) throw new Error("Failed to update visit");
 
-      // Local update + auto-open picker
+      // Local update
       const bmi = calculateBMI(data.height, data.weight);
       const alerts = computeVitalsAlerts({ ...data, bodymassindex: bmi });
-      setPatients((prev) =>
+      setPatients((prev: Patient[]) =>
         prev.map((p) =>
           p.id === targetId
             ? { ...p, status: "In Progress", location: "Waiting for Doctor", vitals: { ...data, bodymassindex: bmi, recordedAt: new Date().toISOString(), recordedBy: "Current Nurse" }, vitalsAlerts: alerts }
@@ -747,10 +872,9 @@ const PoolQueue = () => {
       );
 
       setVitalsDialogOpen(false);
-      setSelectedPatientId(targetId);  // Trigger picker
-      setDialogOpen(true);  // Auto-open ConsultationRoomPicker
+      setError(null);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to save vitals data";
+      const errorMessage = handleError(err, "Vitals submit error");
       setError(errorMessage);
     } finally {
       setIsLoading(false);
@@ -774,6 +898,8 @@ const PoolQueue = () => {
       const roomData = await roomResponse.json();
       const currentQueue = roomData.queue || [];
       const queuePosition = currentQueue.length + 1;
+      
+      // Determine the new status based on room availability
       const newStatus = roomData.status === "available" ? "In Progress" : "Queued";
 
       // Update visit
@@ -800,13 +926,26 @@ const PoolQueue = () => {
         body: JSON.stringify({ queue: updatedQueue }),
       });
 
+      // Update room status if it was available
+      if (roomData.status === "available") {
+        setConsultationRooms(prev => 
+          prev.map(room => 
+            room.id === roomId 
+              ? { ...room, status: "occupied" } 
+              : room
+          )
+        );
+      }
+
       // Local update
-      setPatients(prev => prev.map(p => p.id === selectedPatientId ? { ...p, status: newStatus, location: `${roomData.name} (Queue Position: ${queuePosition})`, consultationRoom: roomId, queuePosition } : p));
+      setPatients((prev: Patient[]) => prev.map(p => p.id === selectedPatientId ? { ...p, status: newStatus, location: `${roomData.name} (Queue Position: ${queuePosition})`, consultationRoom: roomId, queuePosition } : p));
 
       setDialogOpen(false);
       setSelectedPatientId(null);
+      setError(null);
     } catch (err) {
-      setError("Failed to assign room");
+      const errorMessage = handleError(err, "Send to consultation error");
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -855,13 +994,12 @@ const PoolQueue = () => {
       }
       
       // Update local state
-      setPatients((prev) =>
+      setPatients((prev: Patient[]) =>
         prev.map((p) =>
           p.id === patientId
             ? {
                 ...p,
                 status: statusMap[service] as
-                  | "Completed"
                   | "Sent to Injection"
                   | "Sent to Dressing"
                   | "Sent to Ward",
@@ -873,7 +1011,8 @@ const PoolQueue = () => {
       
       setError(null);
     } catch (err) {
-      setError(`Failed to send patient to ${service}`);
+      const errorMessage = handleError(err, `Send to ${service} error`);
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -907,7 +1046,7 @@ const PoolQueue = () => {
       }
       
       // Update local state
-      setPatients((prev) =>
+      setPatients((prev: Patient[]) =>
         prev.map((p) =>
           p.id === wardAdmissionPatient.id
             ? {
@@ -924,12 +1063,13 @@ const PoolQueue = () => {
       setWardAdmissionPatient(null);
       setError(null);
     } catch (err) {
-      setError("Failed to admit patient to ward");
+      const errorMessage = handleError(err, "Ward admission error");
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }
   }, [API_URL, wardAdmissionPatient]);
-  
+
   // Fixed getPatientVitalsData function
   const getPatientVitalsData = useCallback((id: string): ViewVitalsData | null => {
     const patient = patients.find((p) => p.id === id);
@@ -1005,7 +1145,7 @@ const PoolQueue = () => {
       ? getPatientVitals(editingVitalsPatientId)
       : patients.find((p) => p.id === vitalsPatientId)?.vitals;
   }, [editingVitalsData, editingVitalsPatientId, vitalsPatientId, patients, getPatientVitals]);
-  
+
   return (
     <Card className="max-w-7xl mx-auto shadow-xl overflow-y-auto max-h-screen">
       <CardHeader className="rounded-t-lg">
@@ -1015,6 +1155,18 @@ const PoolQueue = () => {
             Nursing Pool Queue
           </CardTitle>
           <div className="flex gap-2">
+            {wsConnected && (
+              <Badge className="bg-green-100 text-green-800 border-green-200">
+                <Users className="h-3 w-3 mr-1" />
+                Real-time updates
+              </Badge>
+            )}
+            {usePolling && (
+              <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200">
+                <Clock className="h-3 w-3 mr-1" />
+                Polling mode
+              </Badge>
+            )}
             <Button
               className="bg-gray-900 hover:bg-gray-900 text-white"
               onClick={handleRefresh}
@@ -1157,6 +1309,7 @@ const PoolQueue = () => {
                 <SelectContent>
                   <SelectItem value="all">All Status</SelectItem>
                   <SelectItem value="In Nursing Pool">In Nursing Pool</SelectItem>
+                  <SelectItem value="Queued">Queued</SelectItem>
                   <SelectItem value="In Progress">In Progress</SelectItem>
                   <SelectItem value="Completed">Completed</SelectItem>
                   <SelectItem value="Scheduled">Scheduled</SelectItem>
@@ -1311,7 +1464,7 @@ const PoolQueue = () => {
                         variant="outline"
                         onClick={() => {
                           const vitalsData = getPatientVitalsData(patient.id);
-                          if (vitalsData && patient.vitals) {
+                          if (vitalsData) {
                             setViewVitalsPatient(vitalsData);
                           } else {
                             setError("No vitals data available to view");
@@ -1335,31 +1488,31 @@ const PoolQueue = () => {
                         </Button>
                       )}
                       
+                      {patient.status === "In Nursing Pool" && patient.vitals && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleEditVitals(patient.id)}
+                          disabled={isLoading}
+                        >
+                          <Edit className="h-4 w-4 mr-1" />
+                          Edit Vitals
+                        </Button>
+                      )}
+                      
                       {patient.status === "In Progress" && (
-                        <>
-                          <Button
-                            size="sm"
-                            onClick={() => {
-                              setSelectedPatientId(patient.id);
-                              setDialogOpen(true);
-                            }}
-                            disabled={isLoading}
-                            className="bg-gray-900 hover:bg-gray-900 text-white"
-                          >
-                            <ArrowRight className="h-4 w-4 mr-1" />
-                            Send to Consultation
-                          </Button>
-                          
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleEditVitals(patient.id)}
-                            disabled={isLoading}
-                          >
-                            <Edit className="h-4 w-4 mr-1" />
-                            Edit Vitals
-                          </Button>
-                        </>
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            setSelectedPatientId(patient.id);
+                            setDialogOpen(true);
+                          }}
+                          disabled={isLoading}
+                          className="bg-gray-900 hover:bg-gray-900 text-white"
+                        >
+                          <ArrowRight className="h-4 w-4 mr-1" />
+                          Send to Consultation
+                        </Button>
                       )}
                       
                       {patient.status === "Completed" && (

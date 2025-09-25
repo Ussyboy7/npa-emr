@@ -1,4 +1,5 @@
-// components/consultation/ConsultationRoom.tsx
+"use client";
+
 import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -10,13 +11,7 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   MapPin,
   Users,
@@ -25,6 +20,9 @@ import {
   Clock,
 } from "lucide-react";
 import VitalsSection from "./vitalssection";
+import ConsultationRoomPicker from "@/components/nurse/consultationroompicker";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@radix-ui/react-dialog";
+import { DialogHeader } from "../ui/dialog";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -49,42 +47,25 @@ interface Patient {
   priority: "Emergency" | "High" | "Medium" | "Low";
   visitDate: string;
   visitTime: string;
-  vitals?: VitalsData;
-}
-
-interface VitalsData {
-  id?: string;
-  height?: string;
-  weight?: string;
-  temperature?: string;
-  pulse?: string;
-  respiratoryRate?: string;
-  bloodPressureSystolic?: string;
-  bloodPressureDiastolic?: string;
-  oxygenSaturation?: string;
-  fbs?: string;
-  rbs?: string;
-  painScale?: string;
-  bodymassindex?: string;
-  comment?: string;
-  recordedAt?: string;
-  recordedBy?: string;
+  vitals?: any;
 }
 
 interface ConsultationRoom {
   id: string;
   name: string;
-  status: string;
-  assignedDoctorId?: string;
-  currentPatientId?: string;
-  startTime?: string;
-  endTime?: string;
+  status: "available" | "occupied" | "unavailable" ;
+  currentPatient?: string;
+  consultationStartTime?: string;
+  estimatedEndTime?: string;
+  doctor?: {
+    id: string;
+    name: string;
+  };
   specialtyFocus?: string;
   totalConsultationsToday?: number;
   averageConsultationTime?: number;
   lastPatient?: string;
-  doctor?: { id: string; name: string; email: string; role: string };
-  patient?: Patient;
+  queue?: any[];
 }
 
 interface ConsultationRoomProps {
@@ -94,9 +75,26 @@ interface ConsultationRoomProps {
 const ConsultationRoom: React.FC<ConsultationRoomProps> = ({ room }) => {
   const router = useRouter();
   const [patients, setPatients] = useState<Patient[]>([]);
-  const [showQueueModal, setShowQueueModal] = useState(false);
+  const [showRoomQueueModal, setShowRoomQueueModal] = useState(false);
   const [currentPatient, setCurrentPatient] = useState<Patient | null>(null);
   const [sessionTimeElapsed, setSessionTimeElapsed] = useState<number>(0);
+  const [allRooms, setAllRooms] = useState<ConsultationRoom[]>([]);
+
+  // Fetch all rooms from API
+  const fetchAllRooms = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/rooms/`, {
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setAllRooms(data.results || []);
+      }
+    } catch (error) {
+      console.error("Error fetching rooms:", error);
+    }
+  }, []);
 
   // Fetch patients assigned to this room
   const fetchPatients = useCallback(async () => {
@@ -107,7 +105,7 @@ const ConsultationRoom: React.FC<ConsultationRoomProps> = ({ room }) => {
       });
       if (response.ok) {
         const data = await response.json();
-        setPatients(data.results || data);
+        setPatients(data.results || []);
       }
     } catch (error) {
       console.error("Error fetching patients:", error);
@@ -181,7 +179,7 @@ const ConsultationRoom: React.FC<ConsultationRoomProps> = ({ room }) => {
       });
       if (response.ok) {
         setCurrentPatient(patient);
-        setShowQueueModal(false);
+        setShowRoomQueueModal(false);
         await fetch(`${API_URL}/api/rooms/${room.id}/`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -239,7 +237,10 @@ const ConsultationRoom: React.FC<ConsultationRoomProps> = ({ room }) => {
         </CardHeader>
         <CardContent>
           <div className="flex justify-between">
-            <Button variant="outline" onClick={() => setShowQueueModal(true)}>
+            <Button variant="outline" onClick={() => {
+              fetchAllRooms();
+              setShowRoomQueueModal(true);
+            }}>
               <Users className="mr-2 h-4 w-4" />
               View Queue
             </Button>
@@ -261,7 +262,7 @@ const ConsultationRoom: React.FC<ConsultationRoomProps> = ({ room }) => {
         </CardContent>
       </Card>
 
-      <Dialog open={showQueueModal} onOpenChange={setShowQueueModal}>
+      <Dialog open={showRoomQueueModal} onOpenChange={setShowRoomQueueModal}>
         <DialogContent className="max-w-5xl overflow-y-auto max-h-[90vh]">
           <DialogHeader>
             <DialogTitle>{room.name} Queue</DialogTitle>
@@ -286,7 +287,7 @@ const ConsultationRoom: React.FC<ConsultationRoomProps> = ({ room }) => {
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
-              {room.patient && (
+              {room.currentPatient && (
                 <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm font-medium text-blue-800">Currently Consulting</span>
@@ -369,6 +370,22 @@ const ConsultationRoom: React.FC<ConsultationRoomProps> = ({ room }) => {
                 ) : (
                   <div className="text-center text-gray-500">No patients in queue</div>
                 )}
+              </div>
+              
+              {/* Add ConsultationRoomPicker to view other rooms */}
+              <div className="mt-6 pt-4 border-t">
+                <h4 className="text-sm font-medium mb-3">Other Consultation Rooms</h4>
+                <ConsultationRoomPicker
+                  isOpen={showRoomQueueModal}
+                  onClose={() => setShowRoomQueueModal(false)}
+                  onSelectRoom={(roomId) => {
+                    // Handle room selection if needed
+                    console.log(`Selected room: ${roomId}`);
+                  }}
+                  rooms={allRooms} 
+                  title="All Consultation Rooms"
+                  description="View all available consultation rooms and their status"
+                />
               </div>
             </CardContent>
           </Card>

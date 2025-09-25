@@ -38,7 +38,6 @@ import EditPatientModalContent from "@/components/medical-records/editpatientmod
 interface Patient {
   id: string;
   patient_id: string;
-  personal_number: string;
   name: string;
   patient_type: string;
   gender: string;
@@ -46,7 +45,6 @@ interface Patient {
   phone?: string;
   email?: string;
   created_at: string;
-  last_visit?: string;
   non_npa_type?: string;
   dependent_type?: string;
   relationship?: string;
@@ -119,7 +117,6 @@ export default function ManagePatientsPage() {
         const mappedPatients = (data.results || data).map((p: any) => ({
           id: String(p.id),
           patient_id: p.patient_id || "",
-          personal_number: p.personal_number || "",
           name: `${p.surname || ""} ${p.first_name || ""}`.trim(),
           patient_type: p.patient_type || "",
           gender: p.gender || "",
@@ -127,7 +124,6 @@ export default function ManagePatientsPage() {
           phone: p.phone || "",
           email: p.email || "",
           created_at: p.created_at || new Date().toISOString(),
-          last_visit: p.last_visit || "",
           non_npa_type: p.non_npa_type || "",
           dependent_type: p.dependent_type || "",
           relationship: p.relationship || "",
@@ -290,11 +286,9 @@ export default function ManagePatientsPage() {
                   {[
                     "#",
                     "Patient ID",
-                    "Personal Number",
                     "Name",
                     "Gender/Age",
                     "Category",
-                    "Last Visit",
                     "Contact",
                     "Actions",
                   ].map((col) => (
@@ -317,9 +311,6 @@ export default function ManagePatientsPage() {
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                         {patient.patient_id}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        {patient.personal_number}
-                      </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
                         <div className="flex items-center gap-2">
                           <User className="h-4 w-4 text-gray-400" />
@@ -335,16 +326,6 @@ export default function ManagePatientsPage() {
                           {patient.non_npa_type ? ` (${patient.non_npa_type})` : ""}
                           {patient.dependent_type ? ` (${patient.dependent_type})` : ""}
                         </Badge>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
-                        {patient.last_visit ? (
-                          <div className="flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            {formatDate(patient.last_visit)}
-                          </div>
-                        ) : (
-                          <span className="text-gray-400">No visits</span>
-                        )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-xs text-muted-foreground">
                         <div className="space-y-1">
@@ -509,7 +490,7 @@ export default function ManagePatientsPage() {
         
         {/* View Patient Modal */}
         <Dialog open={showViewModal} onOpenChange={setShowViewModal}>
-          <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto p-0">
+          <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
             <DialogHeader className="p-6 pb-0">
               <DialogTitle>Patient Overview</DialogTitle>
             </DialogHeader>
@@ -521,7 +502,7 @@ export default function ManagePatientsPage() {
         
         {/* Edit Patient Modal */}
         <Dialog open={showEditModal} onOpenChange={setShowEditModal}>
-          <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto p-0">
+          <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
             <DialogHeader className="p-6 pb-0">
               <DialogTitle>Edit Patient</DialogTitle>
             </DialogHeader>

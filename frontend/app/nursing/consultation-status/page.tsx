@@ -529,7 +529,7 @@ const ConsultationRoomQueue = () => {
               ) : room.status === "available" ? (
                 <div className="text-center py-6 text-muted-foreground">
                   <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                  <p>No patients in queue</p>
+                  <p className="text-sm">No patients in queue</p>
                   <p className="text-xs">Room is ready for next patient</p>
                 </div>
               ) : (
@@ -599,7 +599,7 @@ const ConsultationRoomQueue = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </div>  
   );
 };
 

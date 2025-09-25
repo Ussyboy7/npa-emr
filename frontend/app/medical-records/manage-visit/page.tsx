@@ -33,6 +33,7 @@ import EditVisitModal from "@/components/medical-records/editvisitmodal";
 import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 
+// Improved type definitions
 interface Toast {
   title: string;
   description: string;
@@ -84,6 +85,68 @@ interface APIError {
   detail?: string;
   [key: string]: string | string[] | undefined;
 }
+
+// Improved error handling
+const handleError = (error: unknown, context: string) => {
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  console.error(`${context}:`, errorMessage);
+  return errorMessage;
+};
+
+// Improved WebSocket hook
+const useWebSocket = (url: string, onMessage: (data: any) => void) => {
+  const [wsConnected, setWsConnected] = useState(false);
+  const [usePolling, setUsePolling] = useState(false);
+  const wsRef = React.useRef<WebSocket | null>(null);
+
+  useEffect(() => {
+    try {
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const wsUrl = `${protocol}${url}`;
+      
+      wsRef.current = new WebSocket(wsUrl);
+      
+      wsRef.current.onopen = () => {
+        console.log("WebSocket connected");
+        setWsConnected(true);
+        setUsePolling(false);
+      };
+      
+      wsRef.current.onmessage = (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          onMessage(data);
+        } catch (error) {
+          console.error("Error parsing WebSocket message:", error);
+        }
+      };
+      
+      wsRef.current.onerror = (err) => {
+        console.error("WebSocket error:", err);
+        setWsConnected(false);
+        setUsePolling(true);
+      };
+      
+      wsRef.current.onclose = () => {
+        console.log("WebSocket closed");
+        setWsConnected(false);
+        setUsePolling(true);
+      };
+    } catch (err) {
+      console.error("WebSocket setup error:", err);
+      setWsConnected(false);
+      setUsePolling(true);
+    }
+
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+    };
+  }, [url]);
+
+  return { wsConnected, usePolling };
+};
 
 const Loader = () => <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-900" />;
 
@@ -149,14 +212,45 @@ export default function ManageVisit() {
   const [showPatientOverviewModal, setShowPatientOverviewModal] = useState(false);
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [usePolling, setUsePolling] = useState(false);
-  const itemsPerPage = 10;
+  const [itemsPerPage] = useState(10);
   
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
   const token = typeof window !== 'undefined' ? localStorage.getItem("token") || "" : "";
 
+  // WebSocket setup
+  const handleWebSocketMessage = (data: any) => {
+    if (data.type === "visit.update") {
+      setVisits((prev) => {
+        const updated = prev.map((v) =>
+          v.id === data.data.id 
+            ? { ...v, ...data.data, updated_at: new Date().toISOString() } 
+            : v
+        );
+        
+        if (!prev.some((v) => v.id === data.data.id)) {
+          return [data.data, ...updated].slice(0, itemsPerPage);
+        }
+        
+        return updated;
+      });
+      
+      toast({
+        title: "Visit Updated",
+        description: `Visit ${data.data.id} status: ${data.data.status}`,
+        variant: "success",
+      });
+    }
+  };
+
+  const { wsConnected, usePolling } = useWebSocket(
+    `${window.location.host}/ws/visits/`,
+    handleWebSocketMessage
+  );
+
+  // Improved fetch with error handling
   const fetchVisits = async () => {
     try {
+      setIsLoading(true);
       const params = new URLSearchParams({
         page: String(currentPage),
         page_size: String(itemsPerPage),
@@ -205,12 +299,14 @@ export default function ManageVisit() {
         Math.ceil((visitsData.count || mappedVisits.length) / itemsPerPage)
       );
     } catch (err) {
+      const errorMessage = handleError(err, "Fetch visits error");
       toast({
         title: "Error",
-        description: String(err),
+        description: errorMessage,
         variant: "destructive",
       });
-      console.error("Fetch visits error:", err);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -247,14 +343,25 @@ export default function ManageVisit() {
       
       setPatients(mappedPatients);
     } catch (err) {
+      const errorMessage = handleError(err, "Fetch patients error");
       toast({
         title: "Error",
-        description: String(err),
+        description: errorMessage,
         variant: "destructive",
       });
-      console.error("Fetch patients error:", err);
     }
   };
+
+  // Auto-refresh when using polling
+  useEffect(() => {
+    if (usePolling) {
+      const interval = setInterval(() => {
+        fetchVisits();
+      }, 30000);
+      
+      return () => clearInterval(interval);
+    }
+  }, [usePolling]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -266,98 +373,47 @@ export default function ManageVisit() {
     fetchData();
   }, [currentPage, searchTerm, statusFilter, priorityFilter, dateFilter, token]);
 
-  // WebSocket and polling setup
-  useEffect(() => {
-    let ws: WebSocket | null = null;
-    let pollingInterval: NodeJS.Timeout | null = null;
-    
-    const setupWebSocket = () => {
-      try {
-        console.log("Attempting WebSocket connection to:", `ws://localhost:8000/ws/visits/`);
-        ws = new WebSocket(`ws://localhost:8000/ws/visits/`);
-        
-        ws.onopen = () => {
-          console.log("WebSocket connected successfully");
-          setUsePolling(false);
-        };
-        
-        ws.onmessage = (e) => {
-          const data = JSON.parse(e.data);
-          console.log("WebSocket message received:", data);
-          
-          if (data.type === "visit.update") {
-            setVisits((prev) => {
-              const updated = prev.map((v) =>
-                v.id === data.data.id 
-                  ? { ...v, ...data.data, updated_at: new Date().toISOString() } 
-                  : v
-              );
-              
-              if (!prev.some((v) => v.id === data.data.id)) {
-                return [data.data, ...updated].slice(0, itemsPerPage);
-              }
-              
-              return updated;
-            });
-            
-            toast({
-              title: "Visit Updated",
-              description: `Visit ${data.data.id} status: ${data.data.status}`,
-              variant: "success",
-            });
-          }
-        };
-        
-        ws.onerror = (err) => {
-          console.error("WebSocket error:", err);
-          toast({
-            title: "WebSocket Error",
-            description: "Real-time updates unavailable, switching to polling.",
-            variant: "destructive",
-          });
-          setUsePolling(true);
-        };
-        
-        ws.onclose = (event) => {
-          console.log("WebSocket closed:", event.code, event.reason);
-          toast({
-            title: "WebSocket Closed",
-            description: "Real-time updates unavailable, switching to polling.",
-            variant: "destructive",
-          });
-          setUsePolling(true);
-        };
-      } catch (err) {
-        console.error("WebSocket setup error:", err);
-        toast({
-          title: "WebSocket Setup Error",
-          description: "Failed to setup WebSocket, switching to polling.",
-          variant: "destructive",
-        });
-        setUsePolling(true);
-      }
-    };
-    
-    if (!usePolling) {
-      setupWebSocket();
+  // Improved pagination
+  const paginatedVisits = visits.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+  
+  // Calculate stats based on current visits
+  const stats = {
+    total: totalCount,
+    scheduled: visits.filter((v) => v.status === "Scheduled").length,
+    confirmed: visits.filter((v) => v.status === "Confirmed").length,
+    inProgress: visits.filter((v) => v.status === "In Progress").length,
+    inNursingPool: visits.filter((v) => v.status === "In Nursing Pool").length,
+    completed: visits.filter((v) => v.status === "Completed").length,
+    cancelled: visits.filter((v) => v.status === "Cancelled").length,
+    rescheduled: visits.filter((v) => v.status === "Rescheduled").length,
+  };
+
+  // Missing functions implementation
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedVisits(paginatedVisits.map(v => v.id));
+    } else {
+      setSelectedVisits([]);
     }
-    
-    if (usePolling) {
-      console.log("Starting polling for visits");
-      pollingInterval = setInterval(fetchVisits, 30000);
-    }
-    
-    return () => {
-      if (ws) {
-        console.log("Closing WebSocket");
-        ws.close();
+  };
+
+  const handleVisitSelection = (visitId: string, checked: boolean) => {
+    setSelectedVisits(prev => {
+      if (checked) {
+        return [...prev, visitId];
+      } else {
+        return prev.filter(id => id !== visitId);
       }
-      if (pollingInterval) {
-        console.log("Clearing polling interval");
-        clearInterval(pollingInterval);
-      }
-    };
-  }, [usePolling]);
+    });
+  };
+
+  const handleViewPatient = (patientId: string) => {
+    setSelectedPatientId(patientId);
+    setShowPatientOverviewModal(true);
+  };
 
   const updateVisitStatus = async (visitId: string, newStatus: VisitStatus, nurseId?: string) => {
     try {
@@ -397,12 +453,12 @@ export default function ManageVisit() {
         variant: "success",
       });
     } catch (err) {
+      const errorMessage = handleError(err, "Update visit status error");
       toast({
         title: "Error",
-        description: String(err),
+        description: errorMessage,
         variant: "destructive",
       });
-      console.error("Update status error:", err);
     }
   };
 
@@ -452,12 +508,12 @@ export default function ManageVisit() {
         variant: "success",
       });
     } catch (err) {
+      const errorMessage = handleError(err, "Bulk update error");
       toast({
         title: "Error",
-        description: String(err),
+        description: errorMessage,
         variant: "destructive",
       });
-      console.error("Bulk update error:", err);
     }
   };
 
@@ -514,44 +570,13 @@ export default function ManageVisit() {
         variant: "success",
       });
     } catch (err) {
+      const errorMessage = handleError(err, "Edit visit error");
       toast({
         title: "Error",
-        description: String(err),
+        description: errorMessage,
         variant: "destructive",
       });
-      console.error("Edit visit error:", err);
     }
-  };
-
-  const handleVisitSelection = (visitId: string, checked: boolean) => {
-    setSelectedVisits((prev) =>
-      checked ? [...prev, visitId] : prev.filter((id) => id !== visitId)
-    );
-  };
-
-  const handleSelectAll = (checked: boolean) => {
-    setSelectedVisits(checked ? visits.map((v) => v.id) : []);
-  };
-
-  const handleViewPatient = (patientId: string) => {
-    if (patientId) {
-      setSelectedPatientId(patientId);
-      setShowPatientOverviewModal(true);
-    }
-  };
-
-  const paginatedVisits = visits;
-  
-  // Calculate stats based on current visits
-  const stats = {
-    total: totalCount,
-    scheduled: visits.filter((v) => v.status === "Scheduled").length,
-    confirmed: visits.filter((v) => v.status === "Confirmed").length,
-    inProgress: visits.filter((v) => v.status === "In Progress").length,
-    inNursingPool: visits.filter((v) => v.status === "In Nursing Pool").length,
-    completed: visits.filter((v) => v.status === "Completed").length,
-    cancelled: visits.filter((v) => v.status === "Cancelled").length,
-    rescheduled: visits.filter((v) => v.status === "Rescheduled").length,
   };
 
   if (isLoading) {
@@ -571,6 +596,18 @@ export default function ManageVisit() {
             Manage Visits
           </CardTitle>
           <div className="flex items-center gap-3">
+            {wsConnected && (
+              <Badge className="bg-green-100 text-green-800 border-green-200">
+                <Users className="h-3 w-3 mr-1" />
+                Real-time updates
+              </Badge>
+            )}
+            {usePolling && (
+              <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200">
+                <Clock className="h-3 w-3 mr-1" />
+                Polling mode
+              </Badge>
+            )}
             <Button
               className="bg-gray-900 hover:bg-gray-900 text-white"
               onClick={() => router.push("/medical-records/create-visit")}
@@ -616,15 +653,17 @@ export default function ManageVisit() {
                 <Filter className="h-4 w-4" />
                 Search & Filter
               </CardTitle>
-              {selectedVisits.length > 0 && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowBulkActions(true)}
-                >
-                  Bulk Actions ({selectedVisits.length})
-                </Button>
-              )}
+              <div className="flex items-center gap-3">
+                {selectedVisits.length > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowBulkActions(true)}
+                  >
+                    Bulk Actions ({selectedVisits.length})
+                  </Button>
+                )}
+              </div>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -835,14 +874,14 @@ export default function ManageVisit() {
                         
                         <div className="ml-2 flex flex-col gap-1">
                           {/* View Patient Button */}
-                         <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    onClick={() => handleViewPatient(visit.patient)}
-                                                    className="hover:bg-blue-50 hover:border-blue-50"
-                                                  >
-                                                    <Eye className="h-4 w-4" />
-                                                  </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleViewPatient(visit.patient)}
+                            className="hover:bg-blue-50 hover:border-blue-50"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
                           
                           {/* Workflow Actions */}
                           {visit.status === "Scheduled" && (

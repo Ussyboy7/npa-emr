@@ -68,7 +68,6 @@ const ConsultationRoomPicker: React.FC<Props> = ({
 
   const availableRooms = rooms.filter(room => room.status === "available");
   const occupiedRooms = rooms.filter(room => room.status === "occupied");
-  const otherRooms = rooms.filter(room => !["available", "occupied"].includes(room.status));
 
   return (
     <div className="max-w-8xl max-h-[80vh] overflow-y-auto">
@@ -79,7 +78,7 @@ const ConsultationRoomPicker: React.FC<Props> = ({
       </div>
 
       {/* Room Statistics */}
-      <div className="grid grid-cols-3 gap-4 text-center">
+      <div className="grid grid-cols-2 gap-8 text-center">
         <div className="p-3 bg-green-50 rounded-lg">
           <div className="text-2xl font-bold text-green-600">{availableRooms.length}</div>
           <div className="text-xs text-green-700">Available</div>
@@ -87,10 +86,6 @@ const ConsultationRoomPicker: React.FC<Props> = ({
         <div className="p-3 bg-red-50 rounded-lg">
           <div className="text-2xl font-bold text-red-600">{occupiedRooms.length}</div>
           <div className="text-xs text-red-700">Occupied</div>
-        </div>
-        <div className="p-3 bg-gray-50 rounded-lg">
-          <div className="text-2xl font-bold text-gray-600">{otherRooms.length}</div>
-          <div className="text-xs text-gray-700">Other</div>
         </div>
       </div>
 
@@ -173,39 +168,6 @@ const ConsultationRoomPicker: React.FC<Props> = ({
                         Dr. {room.doctor}
                       </div>
                     )}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Other Rooms (Reserved, etc.) */}
-      {otherRooms.length > 0 && (
-        <div className="space-y-3">
-          <h3 className="text-sm font-medium text-gray-700 flex items-center gap-2">
-            <AlertCircle className="h-4 w-4 text-orange-600" />
-            Other Rooms ({otherRooms.length})
-          </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {otherRooms.map((room) => (
-              <Card
-                key={room.id}
-                className="cursor-not-allowed opacity-75 border-2 border-gray-200"
-              >
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <h4 className="font-semibold text-gray-900">{room.name}</h4>
-                    <Badge className={getStatusColor(room.status)}>
-                      {getStatusIcon(room.status)}
-                    </Badge>
-                  </div>
-                  <div className="text-xs text-gray-600">
-                    <div className="flex items-center gap-1">
-                      {getStatusIcon(room.status)}
-                      {getStatusText(room.status)}
-                    </div>
                   </div>
                 </CardContent>
               </Card>

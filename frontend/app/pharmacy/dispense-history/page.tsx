@@ -1,275 +1,65 @@
 "use client";
-import React, { useState } from 'react';
+
+import React, { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Search, Filter, Calendar, Package, CheckCircle, Eye, Edit, RefreshCw, AlertTriangle, FileText, Clock, User, Pill, Activity, BarChart3, X, Phone, MapPin, ArrowUpDown, AlertCircle, Users, Stethoscope } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Search, Filter, Calendar, Package, Clock, RefreshCw, FileText, ArrowUpDown, Download, Pill, User, Activity, Users, BarChart3, Eye } from 'lucide-react';
+import { useToast } from "@/hooks/use-toast";
 
-// Enhanced dispensed records with more comprehensive data
-const dispensedRecords = [
-  {
-    id: "DIS001",
-    queueId: "RX001",
-    date: "2025-08-15",
-    time: "14:30",
-    patientName: "John Smith",
-    patientId: "P12345",
-    age: 45,
-    gender: "Male",
-    phoneNumber: "123-456-7890",
-    employeeCategory: "Employee",
-    location: "Headquarters",
-    prescribedBy: "Dr. Smith",
-    consultationRoom: "Room 1",
-    medications: [
-      {
-        name: "Amoxicillin 500mg",
-        quantity: 30,
-        originalPrescription: "Amoxicillin 500mg",
-        substituted: false,
-        batchNumber: "AMX2025001",
-        expiryDate: "2026-12-31",
-        manufacturer: "PharmaCorp"
-      },
-      {
-        name: "Paracetamol 250mg",
-        quantity: 20,
-        originalPrescription: "Paracetamol 250mg",
-        substituted: false,
-        batchNumber: "PCM2025002",
-        expiryDate: "2027-06-30",
-        manufacturer: "MediGen"
-      }
-    ],
-    pharmacist: "Sarah Johnson",
-    substitutions: 0,
-    status: "Completed",
-    waitTime: "25 min",
-    processingTime: "12 min",
-    priority: "Normal",
-    allergies: ["Penicillin"],
-    specialInstructions: "Take with food",
-    refillsRemaining: { "Amoxicillin": 0, "Paracetamol": 2 },
-    nextRefillDate: "2025-09-15",
-    deliveryMethod: "Pickup",
-    verificationMethod: "Photo ID + Insurance Card",
-    counselingProvided: true,
-    counselingDuration: "5 min",
-    followUpRequired: false,
-    drugInteractionChecked: true,
-    qualityControlChecked: true
-  },
-  {
-    id: "DIS002", 
-    queueId: "RX002",
-    date: "2025-08-15",
-    time: "15:15",
-    patientName: "Mary Davis",
-    patientId: "P12346",
-    age: 62,
-    gender: "Female",
-    phoneNumber: "987-654-3210",
-    employeeCategory: "Retiree",
-    location: "Branch Office",
-    prescribedBy: "Dr. Wilson",
-    consultationRoom: "Room 3",
-    medications: [
-      {
-        name: "Metformin 850mg",
-        quantity: 60,
-        originalPrescription: "Insulin 5ml",
-        substituted: true,
-        substitutionReason: "Patient preference - oral medication",
-        batchNumber: "MET2025001",
-        expiryDate: "2026-08-31",
-        manufacturer: "DiabetesCare"
-      },
-      {
-        name: "Glucometer Test Strips",
-        quantity: 50,
-        originalPrescription: "Glucometer Test Strips",
-        substituted: false,
-        batchNumber: "GTS2025003",
-        expiryDate: "2025-12-31",
-        manufacturer: "GlucoTech"
-      }
-    ],
-    pharmacist: "Mike Wilson",
-    substitutions: 1,
-    status: "Completed",
-    waitTime: "35 min",
-    processingTime: "18 min",
-    priority: "High",
-    allergies: [],
-    specialInstructions: "Monitor blood glucose daily",
-    refillsRemaining: { "Metformin": 3, "Test Strips": 1 },
-    nextRefillDate: "2025-09-15",
-    deliveryMethod: "Pickup",
-    verificationMethod: "Photo ID + Insurance Card",
-    counselingProvided: true,
-    counselingDuration: "15 min",
-    followUpRequired: true,
-    followUpDate: "2025-08-29",
-    drugInteractionChecked: true,
-    qualityControlChecked: true
-  },
-  {
-    id: "DIS003",
-    queueId: "RX003",
-    date: "2025-08-15",
-    time: "16:00", 
-    patientName: "Robert Brown",
-    patientId: "P12347",
-    age: 58,
-    gender: "Male",
-    phoneNumber: "555-123-4567",
-    employeeCategory: "Employee",
-    location: "Remote",
-    prescribedBy: "Dr. Davis",
-    consultationRoom: "Telemedicine",
-    medications: [
-      {
-        name: "Lisinopril 10mg",
-        quantity: 30,
-        originalPrescription: "Lisinopril 10mg",
-        substituted: false,
-        batchNumber: "LIS2025001",
-        expiryDate: "2026-10-31",
-        manufacturer: "CardioMed"
-      }
-    ],
-    pharmacist: "Sarah Johnson",
-    substitutions: 0,
-    status: "Partial",
-    waitTime: "42 min",
-    processingTime: "8 min",
-    priority: "Medium",
-    allergies: ["Aspirin"],
-    specialInstructions: "Take at same time daily",
-    refillsRemaining: { "Lisinopril": 5 },
-    nextRefillDate: "2025-09-15",
-    deliveryMethod: "Mail Delivery",
-    verificationMethod: "Digital ID Verification",
-    counselingProvided: true,
-    counselingDuration: "8 min",
-    followUpRequired: false,
-    drugInteractionChecked: true,
-    qualityControlChecked: true,
-    partialReason: "Aspirin 75mg out of stock",
-    expectedCompletionDate: "2025-08-17"
-  },
-  {
-    id: "DIS004",
-    queueId: "RX004",
-    date: "2025-08-14",
-    time: "11:45",
-    patientName: "Sarah Wilson",
-    patientId: "P12348",
-    age: 35,
-    gender: "Female",
-    phoneNumber: "444-987-6543",
-    employeeCategory: "Employee",
-    location: "Headquarters",
-    prescribedBy: "Dr. Brown",
-    consultationRoom: "Room 2",
-    medications: [
-      {
-        name: "Albuterol Inhaler",
-        quantity: 1,
-        originalPrescription: "Albuterol Inhaler 90mcg",
-        substituted: false,
-        batchNumber: "ALB2025001",
-        expiryDate: "2026-05-31",
-        manufacturer: "RespiraCare"
-      },
-      {
-        name: "Prednisone 10mg",
-        quantity: 10,
-        originalPrescription: "Prednisone 10mg",
-        substituted: false,
-        batchNumber: "PRD2025002",
-        expiryDate: "2026-11-30",
-        manufacturer: "SteroidMed"
-      }
-    ],
-    pharmacist: "Mike Wilson",
-    substitutions: 0,
-    status: "Completed",
-    waitTime: "15 min",
-    processingTime: "10 min",
-    priority: "High",
-    allergies: ["Codeine", "Latex"],
-    specialInstructions: "Use inhaler with spacer device",
-    refillsRemaining: { "Albuterol": 2, "Prednisone": 0 },
-    nextRefillDate: "2025-10-14",
-    deliveryMethod: "Pickup",
-    verificationMethod: "Photo ID + Insurance Card",
-    counselingProvided: true,
-    counselingDuration: "12 min",
-    followUpRequired: true,
-    followUpDate: "2025-08-21",
-    drugInteractionChecked: true,
-    qualityControlChecked: true
-  },
-  {
-    id: "DIS005",
-    queueId: "RX005",
-    date: "2025-08-14",
-    time: "09:30",
-    patientName: "David Chen",
-    patientId: "P12349",
-    age: 28,
-    gender: "Male",
-    phoneNumber: "333-444-5555",
-    employeeCategory: "Employee",
-    location: "Branch Office",
-    prescribedBy: "Dr. Lee",
-    consultationRoom: "Room 1",
-    medications: [
-      {
-        name: "Ibuprofen 400mg",
-        quantity: 30,
-        originalPrescription: "Ibuprofen 400mg",
-        substituted: false,
-        batchNumber: "IBU2025001",
-        expiryDate: "2027-02-28",
-        manufacturer: "PainRelief Inc"
-      }
-    ],
-    pharmacist: "Sarah Johnson",
-    substitutions: 0,
-    status: "Completed",
-    waitTime: "12 min",
-    processingTime: "6 min",
-    priority: "Normal",
-    allergies: [],
-    specialInstructions: "Take with food",
-    refillsRemaining: { "Ibuprofen": 1 },
-    nextRefillDate: "2025-09-14",
-    deliveryMethod: "Pickup",
-    verificationMethod: "Photo ID",
-    counselingProvided: true,
-    counselingDuration: "3 min",
-    followUpRequired: false,
-    drugInteractionChecked: true,
-    qualityControlChecked: true
-  }
-];
+// Type definitions for Dispense Record
+interface DispenseRecord {
+  id: string;
+  queueId: string;
+  date: string;
+  time: string;
+  patientName: string;
+  patientId: string;
+  age: number;
+  gender: string;
+  phoneNumber: string;
+  employeeCategory: string;
+  location: string;
+  prescribedBy: string;
+  consultationRoom: string;
+  medications: Array<{
+    name: string;
+    quantity: number;
+    originalPrescription: string;
+    substituted: boolean;
+    substitutionReason?: string;
+    batchNumber: string;
+    expiryDate: string;
+    manufacturer: string;
+  }>;
+  pharmacist: string;
+  substitutions: number;
+  status: string;
+  waitTime: string;
+  processingTime: string;
+  priority: string;
+  allergies: string[];
+  specialInstructions: string;
+  refillsRemaining: Record<string, number>;
+  nextRefillDate: string;
+}
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export default function EnhancedDispenseHistory() {
+  const [dispensedRecords, setDispensedRecords] = useState<DispenseRecord[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [priorityFilter, setPriorityFilter] = useState("All");
-  const [pharmacistFilter, setPharmacistFilter] = useState("All");
   const [dateRange, setDateRange] = useState({ from: "", to: "" });
   const [sortBy, setSortBy] = useState("date");
   const [sortOrder, setSortOrder] = useState("desc");
   const [currentPage, setCurrentPage] = useState(1);
-  const [selectedRecord, setSelectedRecord] = useState(null);
+  const [selectedRecord, setSelectedRecord] = useState<DispenseRecord | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [viewMode, setViewMode] = useState("table");
   const [showCustomReportModal, setShowCustomReportModal] = useState(false);
@@ -277,99 +67,243 @@ export default function EnhancedDispenseHistory() {
   const [reportStartDate, setReportStartDate] = useState("");
   const [reportEndDate, setReportEndDate] = useState("");
   const [reportStatus, setReportStatus] = useState("All");
+  const [loading, setLoading] = useState(false);
+  const [totalPages, setTotalPages] = useState(1);
   const itemsPerPage = 10;
+  const { toast } = useToast();
 
-  // Enhanced filtering
-  const filteredRecords = dispensedRecords.filter(record => {
-    const matchesSearch = 
-      record.patientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      record.patientId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      record.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      record.prescribedBy.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      record.medications.some(med => med.name.toLowerCase().includes(searchTerm.toLowerCase()));
-    
-    const matchesStatus = statusFilter === "All" || record.status === statusFilter;
-    const matchesPriority = priorityFilter === "All" || record.priority === priorityFilter;
-    const matchesPharmacist = pharmacistFilter === "All" || record.pharmacist === pharmacistFilter;
-    
-    const matchesDateRange = (!dateRange.from || record.date >= dateRange.from) && 
-                           (!dateRange.to || record.date <= dateRange.to);
-
-    return matchesSearch && matchesStatus && matchesPriority && matchesPharmacist && matchesDateRange;
-  });
-
-  // Enhanced sorting
-  const sortedRecords = [...filteredRecords].sort((a, b) => {
-    let comparison = 0;
-    
-    switch (sortBy) {
-      case "date":
-        comparison = new Date(a.date + " " + a.time).getTime() - new Date(b.date + " " + b.time).getTime();
-        break;
-      case "patient":
-        comparison = a.patientName.localeCompare(b.patientName);
-        break;
-      case "waitTime":
-        comparison = parseInt(a.waitTime) - parseInt(b.waitTime);
-        break;
-      default:
-        comparison = 0;
+  // Fetch dispense history from database
+  const fetchDispenseHistory = async (page: number = 1) => {
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_URL}/api/pharmacy-queue/?page=${page}&limit=${itemsPerPage}`, {
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
+      if (response.ok) {
+        const data = await response.json();
+        console.log("API Response:", data); // Debug: Log raw API response
+        const transformedRecords: DispenseRecord[] = (data.results || []).map((queue: any) => {
+          const prescription = queue.prescription_details || {};
+          const patient = prescription.patient_details || {};
+          const visit = prescription.visit_details || {};
+          const createdAt = queue.created_at ? new Date(queue.created_at) : new Date();
+          const updatedAt = queue.updated_at ? new Date(queue.updated_at) : createdAt;
+          const processingTime = Math.round((updatedAt.getTime() - createdAt.getTime()) / (1000 * 60)) + " min";
+          return {
+            id: queue.id || `DIS${Math.random().toString(36).substr(2, 9)}`,
+            queueId: prescription.id || `RX${Math.random().toString(36).substr(2, 9)}`,
+            date: queue.created_at ? queue.created_at.split("T")[0] : new Date().toISOString().split("T")[0],
+            time: queue.created_at ? queue.created_at.split("T")[1].slice(0, 5) : "00:00",
+            patientName: patient.name || "Unknown Patient",
+            patientId: patient.mrn || "P-UNKNOWN",
+            age: patient.age || 0,
+            gender: patient.gender || "Unknown",
+            phoneNumber: patient.phone_number || "N/A",
+            employeeCategory: patient.employee_category || "Unknown",
+            location: patient.location || "N/A",
+            prescribedBy: prescription.prescribed_by_name || "Unknown",
+            consultationRoom: visit.consultation_room?.name || "N/A",
+            medications: (prescription.items || []).map((item: any) => ({
+              name: item.medication_details?.name || "Unknown Medication",
+              quantity: item.dispensed_quantity || item.quantity || 0,
+              originalPrescription: item.medication_details?.name || "Unknown",
+              substituted: !!item.substituted_with,
+              substitutionReason: item.substitution_reason || "N/A",
+              batchNumber: item.medication_details?.barcode || "N/A", // Use barcode as batch_number
+              expiryDate: item.medication_details?.batches?.[0]?.expiry_date || "N/A",
+              manufacturer: item.medication_details?.manufacturer || "N/A",
+            })),
+            pharmacist: queue.assigned_pharmacist_name || "N/A",
+            substitutions: (prescription.items || []).filter((item: any) => !!item.substituted_with).length,
+            status: queue.status || "Dispensed",
+            waitTime: `${queue.wait_time_minutes || 0} min`,
+            processingTime: processingTime,
+            priority: queue.priority || "Medium",
+            allergies: patient.allergies || [],
+            specialInstructions: visit.special_instructions || "N/A",
+            refillsRemaining: (prescription.items || []).reduce((acc: Record<string, number>, item: any) => {
+              acc[item.medication_details?.name || "Unknown"] = 0; // Default to 0; backend doesn't provide refills_remaining
+              return acc;
+            }, {}),
+            nextRefillDate: prescription.next_refill_date || "N/A",
+          };
+        });
+        setDispensedRecords(transformedRecords);
+        setTotalPages(Math.ceil((data.count || transformedRecords.length) / itemsPerPage));
+        if (transformedRecords.length === 0) {
+          toast({
+            title: "No Records",
+            description: "No dispense records found in the database.",
+            variant: "destructive",
+          });
+        } else {
+          toast({
+            title: "Success",
+            description: `Loaded ${transformedRecords.length} dispense records.`,
+          });
+        }
+      } else {
+        const text = await response.text();
+        console.error("Dispense history fetch failed:", { status: response.status, text });
+        setDispensedRecords([]);
+        toast({
+          title: "Error",
+          description: `Failed to fetch dispense history: ${text || response.statusText}`,
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Error fetching dispense history:", error);
+      setDispensedRecords([]);
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred while fetching dispense history.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
     }
-    
-    return sortOrder === "desc" ? -comparison : comparison;
-  });
+  };
 
-  const totalPages = Math.ceil(sortedRecords.length / itemsPerPage);
+  // Initial data fetch and refresh on dispense
+  useEffect(() => {
+    fetchDispenseHistory(currentPage);
+    const handleDispense = () => fetchDispenseHistory(1);
+    window.addEventListener("dispenseCompleted", handleDispense);
+    return () => window.removeEventListener("dispenseCompleted", handleDispense);
+  }, [currentPage]);
+
+  // CSV Export
+  const exportCSV = () => {
+    if (dispensedRecords.length === 0) {
+      toast({
+        title: "No Data",
+        description: "No records available to export.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const headers = [
+      "ID,Queue ID,Date,Time,Patient Name,Patient ID,Status,Priority,Medications",
+    ];
+    const rows = dispensedRecords.map(record => {
+      const meds = record.medications.map(m => `${m.name} x${m.quantity}`).join(";");
+      return `${record.id},${record.queueId},${record.date},${record.time},${record.patientName},${record.patientId},${record.status},${record.priority},${meds}`;
+    });
+    const csv = [...headers, ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "dispense_history.csv";
+    a.click();
+    window.URL.revokeObjectURL(url);
+    toast({
+      title: "Success",
+      description: "Dispense history exported as CSV.",
+    });
+  };
+
+  // Filtering
+  const filteredRecords = useMemo(() => {
+    return dispensedRecords.filter(record => {
+      const matchesSearch =
+        record.patientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        record.patientId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        record.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        record.prescribedBy.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        record.medications.some(med => med.name.toLowerCase().includes(searchTerm.toLowerCase()));
+      const matchesStatus = statusFilter === "All" || record.status === statusFilter;
+      const matchesPriority = priorityFilter === "All" || record.priority === priorityFilter;
+      const matchesDateRange = (!dateRange.from || record.date >= dateRange.from) &&
+        (!dateRange.to || record.date <= dateRange.to);
+      return matchesSearch && matchesStatus && matchesPriority && matchesDateRange;
+    });
+  }, [dispensedRecords, searchTerm, statusFilter, priorityFilter, dateRange]);
+
+  // Sorting
+  const sortedRecords = useMemo(() => {
+    return [...filteredRecords].sort((a, b) => {
+      let comparison = 0;
+      switch (sortBy) {
+        case "date":
+          comparison = new Date(a.date + " " + a.time).getTime() - new Date(b.date + " " + b.time).getTime();
+          break;
+        case "patient":
+          comparison = a.patientName.localeCompare(b.patientName);
+          break;
+        case "waitTime":
+          comparison = parseInt(a.waitTime) - parseInt(b.waitTime);
+          break;
+        default:
+          comparison = 0;
+      }
+      return sortOrder === "desc" ? -comparison : comparison;
+    });
+  }, [filteredRecords, sortBy, sortOrder]);
+
+  // Paginated records
   const paginatedRecords = sortedRecords.slice(
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage
   );
 
-  // Enhanced statistics
-  const stats = {
+  // Statistics
+  const stats = useMemo(() => ({
     total: dispensedRecords.length,
-    completed: dispensedRecords.filter(r => r.status === "Completed").length,
-    partial: dispensedRecords.filter(r => r.status === "Partial").length,
-    substitutionRate: (dispensedRecords.filter(r => r.substitutions > 0).length / dispensedRecords.length * 100).toFixed(1),
-    avgWaitTime: Math.round(dispensedRecords.reduce((sum, r) => sum + parseInt(r.waitTime), 0) / dispensedRecords.length),
-    avgProcessingTime: Math.round(dispensedRecords.reduce((sum, r) => sum + parseInt(r.processingTime), 0) / dispensedRecords.length),
+    completed: dispensedRecords.filter(r => r.status === "Dispensed").length,
+    partial: dispensedRecords.filter(r => r.status === "Partially Dispensed").length,
+    substitutionRate: (dispensedRecords.filter(r => r.substitutions > 0).length / dispensedRecords.length * 100).toFixed(1) || "0.0",
+    avgWaitTime: Math.round(dispensedRecords.reduce((sum, r) => sum + parseInt(r.waitTime || "0"), 0) / dispensedRecords.length) || 0,
+    avgProcessingTime: Math.round(dispensedRecords.reduce((sum, r) => sum + parseInt(r.processingTime || "0"), 0) / dispensedRecords.length) || 0,
     highPriority: dispensedRecords.filter(r => r.priority === "High").length,
-    counselingProvided: dispensedRecords.filter(r => r.counselingProvided).length,
-    followUpRequired: dispensedRecords.filter(r => r.followUpRequired).length
-  };
+    totalMedications: dispensedRecords.reduce((sum, r) => sum + r.medications.length, 0),
+    avgMedicationsPerDispense: (dispensedRecords.reduce((sum, r) => sum + r.medications.length, 0) / dispensedRecords.length).toFixed(1) || "0.0",
+  }), [dispensedRecords]);
 
-  // Get badge colors
-  const getStatusColor = (status) => {
+  // Utility functions
+  const getStatusColor = (status: string) => {
     switch (status) {
-      case "Completed": return "bg-green-100 text-green-800 border-green-200";
-      case "Partial": return "bg-orange-100 text-orange-800 border-orange-200";
-      case "Cancelled": return "bg-red-100 text-red-800 border-red-200";
-      default: return "bg-gray-100 text-gray-800 border-gray-200";
+      case "Dispensed":
+        return "bg-green-100 text-green-800 border-green-200";
+      case "Partially Dispensed":
+        return "bg-orange-100 text-orange-800 border-orange-200";
+      case "Cancelled":
+        return "bg-red-100 text-red-800 border-red-200";
+      default:
+        return "bg-gray-100 text-gray-800 border-gray-200";
     }
   };
 
-  const getPriorityColor = (priority) => {
+  const getPriorityColor = (priority: string) => {
     switch (priority) {
-      case "High": return "bg-red-100 text-red-800 border-red-200";
-      case "Medium": return "bg-yellow-100 text-yellow-800 border-yellow-200";
-      case "Normal": return "bg-green-100 text-green-800 border-green-200";
-      default: return "bg-gray-100 text-gray-800 border-gray-200";
+      case "High":
+        return "bg-red-100 text-red-800 border-red-200";
+      case "Medium":
+        return "bg-yellow-100 text-yellow-800 border-yellow-200";
+      case "Normal":
+        return "bg-green-100 text-green-800 border-green-200";
+      default:
+        return "bg-gray-100 text-gray-800 border-gray-200";
     }
   };
 
-  const formatDate = (dateString) => {
+  const formatDate = (dateString: string) => {
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { 
-      year: 'numeric', 
-      month: 'short', 
-      day: '2-digit' 
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: '2-digit',
     });
   };
 
   const generateCustomReport = () => {
-    // Simulate report generation
     console.log('Generating custom report', { type: reportType, startDate: reportStartDate, endDate: reportEndDate, status: reportStatus });
-    alert('Custom report generated! Check console for details.');
+    toast({
+      title: "Report Generated",
+      description: "Check console for report details.",
+    });
     setShowCustomReportModal(false);
   };
 
@@ -378,23 +312,13 @@ export default function EnhancedDispenseHistory() {
     if (!showDetailModal || !selectedRecord) return null;
 
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-hidden">
-          <div className="flex items-center justify-between p-6 border-b">
-            <div>
-              <h2 className="text-2xl font-bold">Dispense Record Details</h2>
-              <p className="text-gray-600">Record ID: {selectedRecord.id} | Queue ID: {selectedRecord.queueId}</p>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowDetailModal(false)}
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-
-          <div className="p-6 overflow-y-auto max-h-[70vh] space-y-6">
+      <Dialog open={showDetailModal} onOpenChange={setShowDetailModal}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Dispense Record Details</DialogTitle>
+            <CardDescription>Record ID: {selectedRecord.id} | Queue ID: {selectedRecord.queueId}</CardDescription>
+          </DialogHeader>
+          <div className="space-y-6">
             {/* Patient Information */}
             <Card>
               <CardHeader>
@@ -429,120 +353,75 @@ export default function EnhancedDispenseHistory() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {selectedRecord.medications.map((med, index) => (
-                    <div key={index} className="border rounded p-4 bg-gray-50">
-                      <div className="flex justify-between items-start mb-2">
-                        <h4 className="font-medium">{med.name}</h4>
+                  {selectedRecord.medications.length > 0 ? (
+                    selectedRecord.medications.map((med, index) => (
+                      <div key={index} className="border rounded p-4 bg-gray-50">
+                        <div className="flex justify-between items-start mb-2">
+                          <h4 className="font-medium">{med.name}</h4>
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm">
+                          <div><strong>Quantity:</strong> {med.quantity}</div>
+                          <div><strong>Batch:</strong> {med.batchNumber}</div>
+                          <div><strong>Expiry:</strong> {med.expiryDate}</div>
+                          <div><strong>Manufacturer:</strong> {med.manufacturer}</div>
+                          {med.substituted && (
+                            <>
+                              <div className="col-span-2">
+                                <strong>Original:</strong> {med.originalPrescription}
+                              </div>
+                              <div className="col-span-3">
+                                <strong>Substitution Reason:</strong> {med.substitutionReason}
+                              </div>
+                            </>
+                          )}
+                        </div>
                       </div>
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm">
-                        <div><strong>Quantity:</strong> {med.quantity}</div>
-                        <div><strong>Batch:</strong> {med.batchNumber}</div>
-                        <div><strong>Expiry:</strong> {med.expiryDate}</div>
-                        <div><strong>Manufacturer:</strong> {med.manufacturer}</div>
-                        {med.substituted && (
-                          <>
-                            <div className="col-span-2">
-                              <strong>Original:</strong> {med.originalPrescription}
-                            </div>
-                            <div className="col-span-3">
-                              <strong>Substitution Reason:</strong> {med.substitutionReason}
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                    ))
+                  ) : (
+                    <div className="text-sm text-gray-500">No medications dispensed</div>
+                  )}
                 </div>
               </CardContent>
             </Card>
 
             {/* Dispensing Details */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Clock className="h-5 w-5" />
-                    Processing Information
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <div><strong>Date:</strong> {formatDate(selectedRecord.date)}</div>
-                  <div><strong>Time:</strong> {selectedRecord.time}</div>
-                  <div><strong>Prescribed by:</strong> {selectedRecord.prescribedBy}</div>
-                  <div><strong>Consultation Room:</strong> {selectedRecord.consultationRoom}</div>
-                  <div><strong>Pharmacist:</strong> {selectedRecord.pharmacist}</div>
-                  <div><strong>Wait Time:</strong> {selectedRecord.waitTime}</div>
-                  <div><strong>Processing Time:</strong> {selectedRecord.processingTime}</div>
-                  <div className="flex items-center gap-2">
-                    <strong>Priority:</strong> 
-                    <Badge className={getPriorityColor(selectedRecord.priority)} variant="outline">
-                      {selectedRecord.priority}
-                    </Badge>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Users className="h-5 w-5" />
-                    Verification & Delivery
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <div><strong>Verification:</strong> {selectedRecord.verificationMethod}</div>
-                  <div><strong>Delivery Method:</strong> {selectedRecord.deliveryMethod}</div>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Quality & Outcomes */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Activity className="h-5 w-5" />
-                    Quality Metrics
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <div><strong>Counseling Provided:</strong> {selectedRecord.counselingProvided ? "Yes" : "No"}</div>
-                  {selectedRecord.counselingProvided && (
-                    <div><strong>Counseling Duration:</strong> {selectedRecord.counselingDuration}</div>
-                  )}
-                  <div><strong>Drug Interaction Check:</strong> {selectedRecord.drugInteractionChecked ? "Completed" : "Not Done"}</div>
-                  <div><strong>Quality Control:</strong> {selectedRecord.qualityControlChecked ? "Passed" : "Pending"}</div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <RefreshCw className="h-5 w-5" />
-                    Follow-up Information
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <div><strong>Follow-up Required:</strong> {selectedRecord.followUpRequired ? "Yes" : "No"}</div>
-                  {selectedRecord.followUpDate && (
-                    <div><strong>Follow-up Date:</strong> {formatDate(selectedRecord.followUpDate)}</div>
-                  )}
-                  <div><strong>Next Refill Date:</strong> {formatDate(selectedRecord.nextRefillDate)}</div>
-                  <div><strong>Refills Remaining:</strong></div>
-                  <div className="ml-4 space-y-1">
-                    {Object.entries(selectedRecord.refillsRemaining).map(([med, refills]) => (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Clock className="h-5 w-5" />
+                  Processing Information
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div><strong>Date:</strong> {formatDate(selectedRecord.date)}</div>
+                <div><strong>Time:</strong> {selectedRecord.time}</div>
+                <div><strong>Prescribed by:</strong> {selectedRecord.prescribedBy}</div>
+                <div><strong>Consultation Room:</strong> {selectedRecord.consultationRoom}</div>
+                <div><strong>Pharmacist:</strong> {selectedRecord.pharmacist}</div>
+                <div><strong>Wait Time:</strong> {selectedRecord.waitTime}</div>
+                <div><strong>Processing Time:</strong> {selectedRecord.processingTime}</div>
+                <div className="flex items-center gap-2">
+                  <strong>Priority:</strong>
+                  <Badge className={getPriorityColor(selectedRecord.priority)} variant="outline">
+                    {selectedRecord.priority}
+                  </Badge>
+                </div>
+                <div><strong>Special Instructions:</strong> {selectedRecord.specialInstructions}</div>
+                <div><strong>Next Refill Date:</strong> {selectedRecord.nextRefillDate}</div>
+                <div><strong>Refills Remaining:</strong></div>
+                <div className="ml-4 space-y-1">
+                  {Object.entries(selectedRecord.refillsRemaining).length > 0 ? (
+                    Object.entries(selectedRecord.refillsRemaining).map(([med, refills]) => (
                       <div key={med} className="text-sm">{med}: {refills} refills</div>
-                    ))}
-                  </div>
-                  {selectedRecord.specialInstructions && (
-                    <div><strong>Special Instructions:</strong> {selectedRecord.specialInstructions}</div>
+                    ))
+                  ) : (
+                    <div className="text-sm">No refills available</div>
                   )}
-                </CardContent>
-              </Card>
-            </div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
-
-          <div className="flex justify-end gap-2 p-6 border-t">
+          <DialogFooter>
             <Button variant="outline" onClick={() => setShowDetailModal(false)}>
               Close
             </Button>
@@ -550,9 +429,9 @@ export default function EnhancedDispenseHistory() {
               <FileText className="h-4 w-4 mr-2" />
               Print Record
             </Button>
-          </div>
-        </div>
-      </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     );
   };
 
@@ -579,8 +458,7 @@ export default function EnhancedDispenseHistory() {
                 </SelectContent>
               </Select>
             </div>
-
-            {(reportType === "custom") && (
+            {reportType === "custom" && (
               <>
                 <div className="space-y-2">
                   <Label htmlFor="report-start">Start Date</Label>
@@ -602,7 +480,6 @@ export default function EnhancedDispenseHistory() {
                 </div>
               </>
             )}
-
             <div className="space-y-2">
               <Label>Status Filter</Label>
               <Select value={reportStatus} onValueChange={setReportStatus}>
@@ -611,12 +488,12 @@ export default function EnhancedDispenseHistory() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="All">All Status</SelectItem>
-                  <SelectItem value="Completed">Completed</SelectItem>
-                  <SelectItem value="Partial">Partial</SelectItem>
+                  <SelectItem value="Dispensed">Dispensed</SelectItem>
+                  <SelectItem value="Partially Dispensed">Partially Dispensed</SelectItem>
+                  <SelectItem value="Cancelled">Cancelled</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-
             <Button onClick={generateCustomReport} className="w-full">
               Generate Report
             </Button>
@@ -627,10 +504,18 @@ export default function EnhancedDispenseHistory() {
   };
 
   return (
-    <div className="flex-1 space-y-6 p-4 md:p-8 pt-6">
+    <div className="flex-1 space-y-6 p-4 md:p-8 pt-6 max-w-7xl mx-auto">
       <div className="flex items-center justify-between">
         <h2 className="text-3xl font-bold tracking-tight">Dispense History & Analytics</h2>
         <div className="flex items-center space-x-2">
+          <Button variant="outline" onClick={() => fetchDispenseHistory(currentPage)}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Refresh
+          </Button>
+          <Button variant="outline" onClick={exportCSV}>
+            <Download className="h-4 w-4 mr-2" />
+            Export CSV
+          </Button>
           <Button variant="outline" onClick={() => setViewMode(viewMode === "table" ? "cards" : "table")}>
             <BarChart3 className="h-4 w-4 mr-2" />
             {viewMode === "table" ? "Card View" : "Table View"}
@@ -642,7 +527,7 @@ export default function EnhancedDispenseHistory() {
         </div>
       </div>
 
-      {/* Enhanced Summary Cards */}
+      {/* Summary Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         <Card className="hover:shadow-lg transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -652,11 +537,10 @@ export default function EnhancedDispenseHistory() {
           <CardContent>
             <div className="text-2xl font-bold">{stats.total}</div>
             <p className="text-xs text-muted-foreground">
-              {stats.completed} completed, {stats.partial} partial
+              {stats.completed} dispensed, {stats.partial} partial
             </p>
           </CardContent>
         </Card>
-        
         <Card className="hover:shadow-lg transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Avg Wait Time</CardTitle>
@@ -669,7 +553,6 @@ export default function EnhancedDispenseHistory() {
             </p>
           </CardContent>
         </Card>
-
         <Card className="hover:shadow-lg transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Substitution Rate</CardTitle>
@@ -682,26 +565,24 @@ export default function EnhancedDispenseHistory() {
             </p>
           </CardContent>
         </Card>
-
         <Card className="hover:shadow-lg transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Counseling Coverage</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Total Medications</CardTitle>
+            <Pill className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{(stats.counselingProvided / stats.total * 100).toFixed(1)}%</div>
-            <p className="text-xs text-muted-foreground">{stats.counselingProvided} records</p>
+            <div className="text-2xl font-bold">{stats.totalMedications}</div>
+            <p className="text-xs text-muted-foreground">Across all dispenses</p>
           </CardContent>
         </Card>
-
         <Card className="hover:shadow-lg transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Follow-up Rate</CardTitle>
-            <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Avg Medications/Dispense</CardTitle>
+            <Pill className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{(stats.followUpRequired / stats.total * 100).toFixed(1)}%</div>
-            <p className="text-xs text-muted-foreground">{stats.followUpRequired} required</p>
+            <div className="text-2xl font-bold">{stats.avgMedicationsPerDispense}</div>
+            <p className="text-xs text-muted-foreground">Per dispense record</p>
           </CardContent>
         </Card>
       </div>
@@ -733,7 +614,6 @@ export default function EnhancedDispenseHistory() {
                   />
                 </div>
               </div>
-
               <div className="space-y-2">
                 <Label>Status Filter</Label>
                 <Select value={statusFilter} onValueChange={(value) => {
@@ -745,13 +625,12 @@ export default function EnhancedDispenseHistory() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="All">All Status</SelectItem>
-                    <SelectItem value="Completed">Completed</SelectItem>
-                    <SelectItem value="Partial">Partial</SelectItem>
+                    <SelectItem value="Dispensed">Dispensed</SelectItem>
+                    <SelectItem value="Partially Dispensed">Partially Dispensed</SelectItem>
                     <SelectItem value="Cancelled">Cancelled</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-
               <div className="space-y-2">
                 <Label>Priority Filter</Label>
                 <Select value={priorityFilter} onValueChange={(value) => {
@@ -770,25 +649,7 @@ export default function EnhancedDispenseHistory() {
                 </Select>
               </div>
             </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div className="space-y-2">
-                <Label>Pharmacist Filter</Label>
-                <Select value={pharmacistFilter} onValueChange={(value) => {
-                  setPharmacistFilter(value);
-                  setCurrentPage(1);
-                }}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Filter by pharmacist" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="All">All Pharmacists</SelectItem>
-                    <SelectItem value="Sarah Johnson">Sarah Johnson</SelectItem>
-                    <SelectItem value="Mike Wilson">Mike Wilson</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="date-from">Date From</Label>
                 <Input
@@ -801,7 +662,6 @@ export default function EnhancedDispenseHistory() {
                   }}
                 />
               </div>
-
               <div className="space-y-2">
                 <Label htmlFor="date-to">Date To</Label>
                 <Input
@@ -814,7 +674,6 @@ export default function EnhancedDispenseHistory() {
                   }}
                 />
               </div>
-
               <div className="space-y-2">
                 <Label>Sort By</Label>
                 <div className="flex gap-2">
@@ -846,7 +705,7 @@ export default function EnhancedDispenseHistory() {
       <div className="flex items-center justify-between">
         <div className="text-sm text-gray-600">
           Showing {paginatedRecords.length} of {filteredRecords.length} dispensed records
-          {filteredRecords.length !== dispensedRecords.length && 
+          {filteredRecords.length !== dispensedRecords.length &&
             ` (filtered from ${dispensedRecords.length} total)`}
         </div>
         <div className="flex items-center gap-2">
@@ -868,7 +727,23 @@ export default function EnhancedDispenseHistory() {
         </div>
       </div>
 
-      {viewMode === "table" && (
+      {/* Loading State */}
+      {loading && (
+        <div className="text-center py-8">
+          <div className="animate-spin h-8 w-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-4"></div>
+          <p>Loading dispense history...</p>
+        </div>
+      )}
+
+      {/* No Records State */}
+      {!loading && dispensedRecords.length === 0 && (
+        <div className="text-center py-8">
+          <p className="text-gray-500">No dispense records found in the database.</p>
+        </div>
+      )}
+
+      {/* Table View */}
+      {!loading && dispensedRecords.length > 0 && viewMode === "table" && (
         <Card>
           <CardContent className="p-0">
             <div className="overflow-x-auto">
@@ -928,7 +803,8 @@ export default function EnhancedDispenseHistory() {
         </Card>
       )}
 
-      {viewMode === "cards" && (
+      {/* Card View */}
+      {!loading && dispensedRecords.length > 0 && viewMode === "cards" && (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {paginatedRecords.map((record) => (
             <Card key={record.id} className="hover:shadow-md transition-shadow">
@@ -972,34 +848,33 @@ export default function EnhancedDispenseHistory() {
       )}
 
       {/* Pagination */}
-      <div className="flex items-center justify-between">
-        <div className="text-sm text-muted-foreground">
-          Page {currentPage} of {totalPages}
+      {dispensedRecords.length > 0 && (
+        <div className="flex items-center justify-between">
+          <div className="text-sm text-muted-foreground">
+            Page {currentPage} of {totalPages}
+          </div>
+          <div className="space-x-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+              disabled={currentPage === 1 || loading}
+            >
+              Previous
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+              disabled={currentPage === totalPages || loading}
+            >
+              Next
+            </Button>
+          </div>
         </div>
-        <div className="space-x-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-            disabled={currentPage === 1}
-          >
-            Previous
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
-            disabled={currentPage === totalPages}
-          >
-            Next
-          </Button>
-        </div>
-      </div>
+      )}
 
-      {/* Detail Modal */}
-      {showDetailModal && <RecordDetailModal />}
-
-      {/* Custom Report Modal */}
+      <RecordDetailModal />
       <CustomReportModal />
     </div>
   );

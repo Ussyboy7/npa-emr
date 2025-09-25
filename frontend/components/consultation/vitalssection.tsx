@@ -53,6 +53,9 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 
+// Import your VitalsForm component
+import VitalsForm from "@/components/nurse/vitalsform"; // Adjust path if needed
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 interface VitalsData {
@@ -86,72 +89,72 @@ interface VitalsSectionProps {
   visitId: string;
   vitals?: VitalsData;
   patientId?: string;
+  patientName?: string;
+  personalNumber?: string;
 }
 
-const getVitalStatus = (
-  type: string,
-  value: string | undefined
-): "normal" | "high" | "low" | "critical" => {
-  if (!value || value === "") return "normal";
-
+// Define the getVitalStatus function (same as in your VitalsForm)
+const getVitalStatus = (type: string, value: string | undefined): 'normal' | 'high' | 'low' | 'critical' => {
+  if (!value || value === '') return 'normal';
+  
   const numValue = parseFloat(value);
-  if (isNaN(numValue)) return "normal";
-
+  if (isNaN(numValue)) return 'normal';
+  
   switch (type) {
     case "bloodPressureSystolic":
-      if (numValue >= 180) return "critical";
-      if (numValue >= 140) return "high";
-      if (numValue < 90) return "low";
-      return "normal";
+      if (numValue >= 180) return 'critical';
+      if (numValue >= 140) return 'high';
+      if (numValue < 90) return 'low';
+      return 'normal';
     case "bloodPressureDiastolic":
-      if (numValue >= 120) return "critical";
-      if (numValue >= 90) return "high";
-      if (numValue < 60) return "low";
-      return "normal";
+      if (numValue >= 120) return 'critical';
+      if (numValue >= 90) return 'high';
+      if (numValue < 60) return 'low';
+      return 'normal';
     case "temperature":
-      if (numValue >= 39) return "critical";
-      if (numValue >= 38) return "high";
-      if (numValue < 36) return "low";
-      return "normal";
+      if (numValue >= 39) return 'critical';
+      if (numValue >= 38) return 'high';
+      if (numValue < 36) return 'low';
+      return 'normal';
     case "pulse":
-      if (numValue >= 120) return "critical";
-      if (numValue >= 100) return "high";
-      if (numValue < 60) return "low";
-      return "normal";
+      if (numValue >= 120) return 'critical';
+      if (numValue >= 100) return 'high';
+      if (numValue < 60) return 'low';
+      return 'normal';
     case "respiratoryRate":
-      if (numValue >= 30) return "critical";
-      if (numValue >= 20) return "high";
-      if (numValue < 12) return "low";
-      return "normal";
+      if (numValue >= 30) return 'critical';
+      if (numValue >= 20) return 'high';
+      if (numValue < 12) return 'low';
+      return 'normal';
     case "oxygenSaturation":
-      if (numValue < 90) return "critical";
-      if (numValue < 95) return "low";
-      return "normal";
+      if (numValue < 90) return 'critical';
+      if (numValue < 95) return 'low';
+      return 'normal';
     case "fbs":
-      if (numValue >= 400) return "critical";
-      if (numValue >= 126) return "high";
-      if (numValue < 70) return "low";
-      return "normal";
+      if (numValue >= 400) return 'critical';
+      if (numValue >= 126) return 'high';
+      if (numValue < 70) return 'low';
+      return 'normal';
     case "rbs":
-      if (numValue >= 400) return "critical";
-      if (numValue >= 200) return "high";
-      if (numValue < 70) return "low";
-      return "normal";
+      if (numValue >= 400) return 'critical';
+      if (numValue >= 200) return 'high';
+      if (numValue < 70) return 'low';
+      return 'normal';
     case "painScale":
-      if (numValue >= 8) return "critical";
-      if (numValue >= 5) return "high";
-      return "normal";
+      if (numValue >= 8) return 'critical';
+      if (numValue >= 5) return 'high';
+      return 'normal';
     default:
-      return "normal";
+      return 'normal';
   }
 };
 
-const getStatusColor = (status: string): string => {
+const getStatusColor = (status: string) => {
   switch (status) {
-    case "normal":
-      return "bg-green-100 text-green-700 border-green-200";
     case "high":
       return "bg-orange-100 text-orange-700 border-orange-200";
+    case "normal":
+      return "bg-green-100 text-green-700 border-green-200";
     case "low":
       return "bg-yellow-100 text-yellow-700 border-yellow-200";
     case "critical":
@@ -162,23 +165,17 @@ const getStatusColor = (status: string): string => {
 };
 
 const getStatusIcon = (status: string) => {
-  switch (status) {
-    case "high":
-      return <TrendingUp className="h-3 w-3" />;
-    case "low":
-      return <TrendingDown className="h-3 w-3" />;
-    case "critical":
-      return <AlertTriangle className="h-3 w-3" />;
-    default:
-      return null;
-  }
+  if (status === "critical") return <AlertTriangle className="h-4 w-4" />;
+  if (status === "high") return <TrendingUp className="h-4 w-4" />;
+  if (status === "low") return <TrendingDown className="h-4 w-4" />;
+  return null;
 };
 
 const getBMICategory = (bmi: number): string => {
-  if (bmi < 18.5) return "Underweight";
-  if (bmi < 25) return "Normal weight";
-  if (bmi < 30) return "Overweight";
-  return "Obese";
+  if (bmi < 18.5) return 'Underweight';
+  if (bmi < 25) return 'Normal weight';
+  if (bmi < 30) return 'Overweight';
+  return 'Obese';
 };
 
 const mockVitalsHistory: VitalRecord[] = [
@@ -227,31 +224,15 @@ const VitalsSection: React.FC<VitalsSectionProps> = ({
   visitId,
   vitals,
   patientId,
+  patientName,
+  personalNumber,
 }) => {
-  const [formData, setFormData] = useState<VitalsData>(
-    vitals || {
-      height: "",
-      weight: "",
-      temperature: "",
-      pulse: "",
-      respiratoryRate: "",
-      bloodPressureSystolic: "",
-      bloodPressureDiastolic: "",
-      oxygenSaturation: "",
-      fbs: "",
-      rbs: "",
-      painScale: "",
-      bodymassindex: "",
-      comment: "",
-    }
-  );
   const [vitalsHistory, setVitalsHistory] =
     useState<VitalRecord[]>(mockVitalsHistory);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [selectedRecord, setSelectedRecord] = useState<VitalRecord | null>(
-    null
-  );
+  const [selectedRecord, setSelectedRecord] = useState<VitalRecord | null>(null);
   const [viewRecordOpen, setViewRecordOpen] = useState(false);
+  const [formOpen, setFormOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [expandedTimes, setExpandedTimes] = useState<{
     [key: string]: boolean;
@@ -424,7 +405,7 @@ const VitalsSection: React.FC<VitalsSectionProps> = ({
   const criticalAlerts = useMemo(() => {
     const alerts: string[] = [];
 
-    Object.entries(formData).forEach(([key, value]) => {
+    Object.entries(vitals || {}).forEach(([key, value]) => {
       const status = getVitalStatus(key, value);
       if (status === "critical") {
         const vital = vitalSigns.find((v) => v.id === key);
@@ -435,34 +416,9 @@ const VitalsSection: React.FC<VitalsSectionProps> = ({
     });
 
     return alerts;
-  }, [formData]);
+  }, [vitals]);
 
-  const calculateBMI = (): string => {
-    const weight = parseFloat(formData.weight || "0");
-    const height = parseFloat(formData.height || "0");
-
-    if (weight && height) {
-      const heightInM = height / 100;
-      const bmiValue = weight / (heightInM * heightInM);
-      return bmiValue.toFixed(2);
-    }
-    return "";
-  };
-
-  const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
-  ) => {
-    const { name, value } = e.target;
-    setFormData((prev) => {
-      const newData = { ...prev, [name]: value };
-      if (name === "height" || name === "weight") {
-        newData.bodymassindex = calculateBMI();
-      }
-      return newData;
-    });
-  };
-
-  const handleSubmit = async () => {
+  const handleFormSubmit = async (formData: VitalsData) => {
     setIsSaving(true);
 
     try {
@@ -483,28 +439,13 @@ const VitalsSection: React.FC<VitalsSectionProps> = ({
         id: Date.now().toString(),
         recordedAt: new Date().toISOString(),
         recordedBy: "Current User",
-        patientName: "John Doe", // Replace with actual patient name
-        personalNumber: patientId || "Unknown",
+        patientName: patientName || "Unknown",
+        personalNumber: personalNumber || "Unknown",
       };
 
       setVitalsHistory((prev) => [newRecord, ...prev]);
-
-      setFormData({
-        height: "",
-        weight: "",
-        temperature: "",
-        pulse: "",
-        respiratoryRate: "",
-        bloodPressureSystolic: "",
-        bloodPressureDiastolic: "",
-        oxygenSaturation: "",
-        fbs: "",
-        rbs: "",
-        painScale: "",
-        bodymassindex: "",
-        comment: "",
-      });
-
+      setFormOpen(false);
+      
       alert("Vitals saved successfully!");
     } catch (error) {
       alert("Error saving vitals. Please try again.");
@@ -518,26 +459,36 @@ const VitalsSection: React.FC<VitalsSectionProps> = ({
     setViewRecordOpen(true);
   };
 
-  const bmi = parseFloat(formData.bodymassindex || "0") || 0;
-
   const normalizeValue = (value: string | undefined): string => {
     return value ?? "Not recorded";
   };
 
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Thermometer className="h-5 w-5" />
-            Vitals for Visit {visitId}
-          </CardTitle>
-          <p className="text-sm text-gray-600">
-            Patient ID: {patientId || "N/A"}
+      {/* Header with patient info */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Vitals</h2>
+          <p className="text-gray-600">
+            Patient: {patientName || "Unknown"} ({personalNumber || "Unknown"})
           </p>
-        </CardHeader>
-      </Card>
+        </div>
+        <div className="flex space-x-3">
+          <Button onClick={() => setFormOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add Vitals
+          </Button>
+          <Button 
+            variant="outline" 
+            onClick={() => setHistoryOpen(true)}
+          >
+            <Clock className="mr-2 h-4 w-4" />
+            View Full History
+          </Button>
+        </div>
+      </div>
 
+      {/* Critical alerts */}
       {criticalAlerts.length > 0 && (
         <Alert className="border-red-200 bg-red-50">
           <AlertTriangle className="h-4 w-4 text-red-600" />
@@ -554,128 +505,82 @@ const VitalsSection: React.FC<VitalsSectionProps> = ({
         </Alert>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Plus className="h-5 w-5" />
-            Record New Vitals
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-6">
+      {/* Current Vitals Card */}
+      {vitals && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Thermometer className="h-5 w-5" />
+              Current Vitals
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
               {vitalSigns.map((vital) => {
-                const value = formData[vital.id as keyof VitalsData] || "";
+                const value = vitals[vital.id as keyof VitalsData];
                 const status = getVitalStatus(vital.id, value);
+
                 return (
-                  <div key={vital.id} className="space-y-2">
-                    <Label
-                      htmlFor={vital.id}
-                      className="flex items-center gap-2"
-                    >
-                      {vital.icon}
-                      {vital.label} ({vital.unit})
-                      {vital.required && (
-                        <span className="text-red-500">*</span>
-                      )}
-                    </Label>
-                    <div className="relative">
-                      <Input
-                        id={vital.id}
-                        name={vital.id}
-                        type="number"
-                        step="0.1"
-                        value={value}
-                        onChange={handleChange}
-                        required={vital.required}
-                        placeholder={vital.placeholder}
-                      />
-                      {value && (
-                        <Badge
-                          className={`absolute -top-2 -right-2 px-1 py-0 text-xs ${getStatusColor(
-                            status
-                          )}`}
-                        >
-                          {getStatusIcon(status)}
-                          {status}
-                        </Badge>
-                      )}
+                  <div
+                    key={vital.id}
+                    className={`p-4 rounded-lg border ${getStatusColor(status)}`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <Label className="flex items-center gap-2 text-sm font-medium">
+                        {vital.icon}
+                        {vital.label}
+                      </Label>
+                      {getStatusIcon(status)}
                     </div>
+                    <p className="text-lg font-semibold">
+                      {normalizeValue(value)}
+                    </p>
+                    <p className="text-xs opacity-75">{vital.unit}</p>
                   </div>
                 );
               })}
             </div>
 
-            <div className="space-y-2">
-              <Label
-                htmlFor="bodymassindex"
-                className="flex items-center gap-2"
-              >
+            {/* BMI Display */}
+            <div className="mt-4 space-y-2">
+              <Label className="flex items-center gap-2 text-sm font-medium">
                 <Weight className="h-4 w-4" />
                 Body Mass Index (kg/m²)
               </Label>
-              <Input
-                id="bodymassindex"
-                name="bodymassindex"
-                type="text"
-                value={formData.bodymassindex}
-                readOnly
-              />
-              {bmi > 0 && (
-                <p className="text-sm text-gray-500">
-                  Category: {getBMICategory(bmi)}
+              <div className="p-4 rounded-lg border bg-gray-50">
+                <p className="text-lg font-semibold text-gray-900">
+                  {vitals.bodymassindex || "Not calculated"}
                 </p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="comment">Additional Comments</Label>
-              <Textarea
-                id="comment"
-                name="comment"
-                value={formData.comment || ""}
-                onChange={handleChange}
-                placeholder="Additional observations or notes..."
-                className="min-h-[80px]"
-              />
-            </div>
-
-            <div className="flex justify-end">
-              <Button
-                onClick={handleSubmit}
-                disabled={isSaving}
-                className="min-w-32"
-              >
-                {isSaving ? (
-                  <>
-                    <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full mr-2"></div>
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Save className="mr-2 h-4 w-4" />
-                    Save Vitals
-                  </>
+                {vitals.bodymassindex && (
+                  <p className="text-sm text-gray-500">
+                    Category: {getBMICategory(parseFloat(vitals.bodymassindex))}
+                  </p>
                 )}
-              </Button>
+              </div>
             </div>
-          </div>
-        </CardContent>
-      </Card>
 
+            {/* Comments section */}
+            {vitals.comment && (
+              <div className="mt-4 space-y-2">
+                <Label className="text-sm font-medium">Additional Comments</Label>
+                <div className="p-4 border rounded-lg bg-blue-50">
+                  <p className="text-sm text-gray-800 whitespace-pre-wrap">
+                    {vitals.comment}
+                  </p>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Recent Vitals */}
       <Card>
         <CardHeader>
-          <div className="flex justify-between items-center">
-            <CardTitle className="text-lg">Recent Vitals</CardTitle>
-            <Button
-              onClick={() => setHistoryOpen(true)}
-              variant="outline"
-              size="sm"
-            >
-              <Clock className="mr-2 h-4 w-4" />
-              View Full History
-            </Button>
-          </div>
+          <CardTitle className="flex items-center gap-2">
+            <Clock className="h-5 w-5" />
+            Recent Vitals
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-2">
@@ -705,24 +610,55 @@ const VitalsSection: React.FC<VitalsSectionProps> = ({
               return (
                 <div key={key} className="border rounded-md">
                   <div className="flex items-center justify-between p-3">
-                    <div className="text-sm">
-                      <div className="font-medium">
-                        {time} — Recorded by {record.recordedBy}
+                    <div className="text-sm flex-1">
+                      <div className="flex items-center justify-between">
+                        <div className="font-medium">
+                          {time} — Recorded by {record.recordedBy}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge
+                            variant="outline"
+                            className={
+                              getRecordOverallStatus(record) === "alert"
+                                ? "border-red-200 text-red-700"
+                                : "border-green-200 text-green-700"
+                            }
+                          >
+                            {getRecordOverallStatus(record) === "alert" ? (
+                              <>
+                                <AlertTriangle className="h-3 w-3 mr-1" />
+                                Alert
+                              </>
+                            ) : (
+                              "Normal"
+                            )}
+                          </Badge>
+                        </div>
                       </div>
                       <div className="text-xs text-gray-500">{date}</div>
                     </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() =>
-                        setExpandedTimes((prev) => ({
-                          ...prev,
-                          [key]: !prev[key],
-                        }))
-                      }
-                    >
-                      {isExpanded ? "▼ Hide" : "▶ Show"}
-                    </Button>
+                    <div className="flex space-x-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => viewRecord(record)}
+                      >
+                        <Eye className="h-4 w-4 mr-1" />
+                        View
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() =>
+                          setExpandedTimes((prev) => ({
+                            ...prev,
+                            [key]: !prev[key],
+                          }))
+                        }
+                      >
+                        {isExpanded ? "▼ Hide" : "▶ Show"}
+                      </Button>
+                    </div>
                   </div>
 
                   {isExpanded && (
@@ -816,6 +752,7 @@ const VitalsSection: React.FC<VitalsSectionProps> = ({
         </CardContent>
       </Card>
 
+      {/* Full History Dialog */}
       <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
         <DialogContent className="max-w-5xl max-h-[85vh] overflow-hidden">
           <DialogHeader>
@@ -960,18 +897,28 @@ const VitalsSection: React.FC<VitalsSectionProps> = ({
                           </div>
                           <div className="text-xs text-gray-500">{date}</div>
                         </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() =>
-                            setExpandedTimes((prev) => ({
-                              ...prev,
-                              [key]: !prev[key],
-                            }))
-                          }
-                        >
-                          {isExpanded ? "▼ Hide" : "▶ Show"}
-                        </Button>
+                        <div className="flex space-x-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => viewRecord(record)}
+                          >
+                            <Eye className="h-4 w-4 mr-1" />
+                            View
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              setExpandedTimes((prev) => ({
+                                ...prev,
+                                [key]: !prev[key],
+                              }))
+                            }
+                          >
+                            {isExpanded ? "▼ Hide" : "▶ Show"}
+                          </Button>
+                        </div>
                       </div>
 
                       {isExpanded && (
@@ -1137,6 +1084,7 @@ const VitalsSection: React.FC<VitalsSectionProps> = ({
         </DialogContent>
       </Dialog>
 
+      {/* View Record Dialog */}
       <Dialog open={viewRecordOpen} onOpenChange={setViewRecordOpen}>
         <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -1149,6 +1097,7 @@ const VitalsSection: React.FC<VitalsSectionProps> = ({
 
           {selectedRecord && (
             <div className="space-y-6 mt-4">
+              {/* Patient Info Header */}
               <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                 <div>
                   <p className="font-semibold text-lg text-gray-900">
@@ -1207,6 +1156,7 @@ const VitalsSection: React.FC<VitalsSectionProps> = ({
                 })()}
               </div>
 
+              {/* Vital Signs Grid */}
               <div className="space-y-4">
                 <h4 className="text-md font-semibold text-gray-800">
                   Vital Signs
@@ -1240,6 +1190,7 @@ const VitalsSection: React.FC<VitalsSectionProps> = ({
                   })}
                 </div>
 
+                {/* BMI Display */}
                 <div className="space-y-2">
                   <Label className="flex items-center gap-2 text-sm font-medium">
                     <Weight className="h-4 w-4" />
@@ -1260,6 +1211,7 @@ const VitalsSection: React.FC<VitalsSectionProps> = ({
                   </div>
                 </div>
 
+                {/* Comments section */}
                 {selectedRecord.comment && (
                   <div className="space-y-2">
                     <Label className="text-sm font-medium">
@@ -1281,6 +1233,25 @@ const VitalsSection: React.FC<VitalsSectionProps> = ({
               Close
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Vitals Dialog */}
+      <Dialog open={formOpen} onOpenChange={setFormOpen}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus className="h-5 w-5" />
+              Add New Vitals
+            </DialogTitle>
+            <DialogClose />
+          </DialogHeader>
+          
+          <VitalsForm 
+            onSubmit={handleFormSubmit} 
+            initialData={vitals}
+            isSaving={isSaving}
+          />
         </DialogContent>
       </Dialog>
     </div>

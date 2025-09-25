@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+"use client";
+
+import React, { useState, useEffect } from 'react';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -10,7 +12,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Pill, Send, Plus, X, AlertTriangle, Clock, Search } from 'lucide-react';
+import { Pill, Send, Plus, X, AlertTriangle, Clock, Search, CheckCircle, FileText } from 'lucide-react';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 interface PrescriptionsProps {
   visitId: string;
@@ -19,34 +23,51 @@ interface PrescriptionsProps {
 interface Medication {
   id: string;
   name: string;
+  generic_name?: string;
+  strength: string;
+  dosage_form: string;
+  category: string;
+  current_stock: number;
+  prescription_required: boolean;
+  is_generic: boolean;
+}
+
+interface PrescriptionItem {
+  id?: string;
+  medication: string;
   dosage: string;
   frequency: string;
   duration: string;
-  instructions: string;
   route: string;
   quantity: number;
+  instructions: string;
+}
+
+interface Prescription {
+  id: string;
+  items: PrescriptionItem[];
+  status: string;
+  created_at: string;
+  prescribed_by_name: string;
+  notes: string;
+  total_items: number;
+  available_items: number;
+  out_of_stock_items: number;
+  dispensed_items: number;
 }
 
 interface DrugInteraction {
   drug1: string;
   drug2: string;
-  severity: 'minor' | 'moderate' | 'major';
+  severity: 'Minor' | 'Moderate' | 'Major';
   description: string;
-}
-
-interface Prescription {
-  id: string;
-  medications: Medication[];
-  prescribedAt: string;
-  status: 'pending' | 'filled' | 'cancelled';
-  pharmacist: string;
-  notes: string;
+  recommendation: string;
 }
 
 // Validation schema
 const medicationSchema = z.object({
-  name: z.string().min(2, "Medication name is required"),
-  dosage: z.string().regex(/^\d+(\.\d+)?\s*(mg|ml|g|mcg|units?)$/i, "Invalid dosage format (e.g., 500mg, 10ml)"),
+  medication: z.string().min(1, "Medication is required"),
+  dosage: z.string().min(1, "Dosage is required"),
   frequency: z.string().min(1, "Frequency is required"),
   duration: z.string().min(1, "Duration is required"),
   route: z.enum(['oral', 'intravenous', 'intramuscular', 'subcutaneous', 'topical', 'inhalation', 'rectal', 'sublingual']),
@@ -55,47 +76,11 @@ const medicationSchema = z.object({
 });
 
 const prescriptionSchema = z.object({
-  medications: z.array(medicationSchema).min(1, "At least one medication is required"),
-  prescriptionNotes: z.string().optional(),
-}).refine(
-  (data) => {
-    // Check for dangerous drug combinations
-    const medications = data.medications;
-    for (let i = 0; i < medications.length; i++) {
-      for (let j = i + 1; j < medications.length; j++) {
-        const drug1 = medications[i].name.toLowerCase();
-        const drug2 = medications[j].name.toLowerCase();
-        
-        // Example dangerous combinations
-        if ((drug1.includes('warfarin') && drug2.includes('aspirin')) ||
-            (drug1.includes('metformin') && drug2.includes('contrast'))) {
-          return false;
-        }
-      }
-    }
-    return true;
-  },
-  {
-    message: "Potential dangerous drug interaction detected. Please review.",
-    path: ["medications"],
-  }
-);
+  items: z.array(medicationSchema).min(1, "At least one medication is required"),
+  notes: z.string().optional(),
+});
 
 type PrescriptionForm = z.infer<typeof prescriptionSchema>;
-
-// Common medications with details
-const commonMedications = [
-  { name: 'Paracetamol', category: 'Analgesic', commonDosages: ['500mg', '1000mg'], routes: ['oral'] },
-  { name: 'Ibuprofen', category: 'NSAID', commonDosages: ['400mg', '600mg'], routes: ['oral'] },
-  { name: 'Amoxicillin', category: 'Antibiotic', commonDosages: ['500mg', '875mg'], routes: ['oral'] },
-  { name: 'Metformin', category: 'Antidiabetic', commonDosages: ['500mg', '850mg', '1000mg'], routes: ['oral'] },
-  { name: 'Amlodipine', category: 'Antihypertensive', commonDosages: ['5mg', '10mg'], routes: ['oral'] },
-  { name: 'Omeprazole', category: 'PPI', commonDosages: ['20mg', '40mg'], routes: ['oral'] },
-  { name: 'Atorvastatin', category: 'Statin', commonDosages: ['20mg', '40mg', '80mg'], routes: ['oral'] },
-  { name: 'Aspirin', category: 'Antiplatelet', commonDosages: ['75mg', '100mg'], routes: ['oral'] },
-  { name: 'Losartan', category: 'ARB', commonDosages: ['50mg', '100mg'], routes: ['oral'] },
-  { name: 'Metoprolol', category: 'Beta-blocker', commonDosages: ['25mg', '50mg', '100mg'], routes: ['oral'] },
-];
 
 const frequencyOptions = [
   { value: 'once_daily', label: 'Once daily', abbreviation: 'OD' },
@@ -123,34 +108,15 @@ const routeOptions = [
 ];
 
 const Prescriptions: React.FC<PrescriptionsProps> = ({ visitId }) => {
-  const [existingPrescriptions, setExistingPrescriptions] = useState<Prescription[]>([
-    {
-      id: 'rx-1',
-      medications: [
-        {
-          id: '1',
-          name: 'Amoxicillin',
-          dosage: '500mg',
-          frequency: 'three_times_daily',
-          duration: '7 days',
-          route: 'oral',
-          quantity: 21,
-          instructions: 'Take with food'
-        }
-      ],
-      prescribedAt: '2024-01-15 10:30 AM',
-      status: 'pending',
-      pharmacist: 'Not assigned',
-      notes: 'For respiratory tract infection'
-    }
-  ]);
-
+  const [existingPrescriptions, setExistingPrescriptions] = useState<Prescription[]>([]);
+  const [medications, setMedications] = useState<Medication[]>([]);
   const [isSending, setIsSending] = useState(false);
   const [drugInteractions, setDrugInteractions] = useState<DrugInteraction[]>([]);
   const [medicationSearch, setMedicationSearch] = useState('');
   const [showSuggestions, setShowSuggestions] = useState<number | null>(null);
-  // Added: State to track if we are editing an existing prescription
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [showSuccess, setShowSuccess] = useState(false);
 
   const {
     control,
@@ -162,8 +128,8 @@ const Prescriptions: React.FC<PrescriptionsProps> = ({ visitId }) => {
   } = useForm<PrescriptionForm>({
     resolver: zodResolver(prescriptionSchema),
     defaultValues: {
-      medications: [{
-        name: '',
+      items: [{
+        medication: '',
         dosage: '',
         frequency: '',
         duration: '',
@@ -171,253 +137,215 @@ const Prescriptions: React.FC<PrescriptionsProps> = ({ visitId }) => {
         quantity: 1,
         instructions: ''
       }],
-      prescriptionNotes: ''
+      notes: ''
     }
   });
 
   const { fields, append, remove } = useFieldArray({
     control,
-    name: "medications"
+    name: "items"
   });
 
   const formData = watch();
 
-  // Check for drug interactions whenever medications change
-  React.useEffect(() => {
-    checkDrugInteractions(formData.medications);
-  }, [formData.medications]);
-
-  const checkDrugInteractions = (medications: any[]) => {
-    const interactions: DrugInteraction[] = [];
-    
-    for (let i = 0; i < medications.length; i++) {
-      for (let j = i + 1; j < medications.length; j++) {
-        const drug1 = medications[i]?.name?.toLowerCase() || '';
-        const drug2 = medications[j]?.name?.toLowerCase() || '';
-        
-        // Improved: Added more common dangerous interactions based on research (e.g., from WebMD, AAFP, etc.)
-        if (drug1.includes('warfarin') && drug2.includes('aspirin')) {
-          interactions.push({
-            drug1: medications[i].name,
-            drug2: medications[j].name,
-            severity: 'major',
-            description: 'Increased risk of bleeding when combining warfarin with aspirin'
-          });
-        }
-        
-        if (drug1.includes('metformin') && drug2.includes('contrast')) {
-          interactions.push({
-            drug1: medications[i].name,
-            drug2: medications[j].name,
-            severity: 'major',
-            description: 'Risk of lactic acidosis when combining metformin with contrast media'
-          });
-        }
-        
-        if ((drug1.includes('ibuprofen') || drug1.includes('nsaid')) && 
-            (drug2.includes('ace inhibitor') || drug2.includes('losartan'))) {
-          interactions.push({
-            drug1: medications[i].name,
-            drug2: medications[j].name,
-            severity: 'moderate',
-            description: 'NSAIDs may reduce the effectiveness of ACE inhibitors/ARBs'
-          });
-        }
-
-        // Added: Warfarin + Ibuprofen (from multiple sources, increased bleeding)
-        if (drug1.includes('warfarin') && drug2.includes('ibuprofen')) {
-          interactions.push({
-            drug1: medications[i].name,
-            drug2: medications[j].name,
-            severity: 'major',
-            description: 'Increased risk of bleeding when combining warfarin with ibuprofen'
-          });
-        }
-
-        // Added: Digoxin + Amiodarone (from Crediblemeds, arrhythmias)
-        if (drug1.includes('digoxin') && drug2.includes('amiodarone')) {
-          interactions.push({
-            drug1: medications[i].name,
-            drug2: medications[j].name,
-            severity: 'major',
-            description: 'Increased digoxin levels leading to toxicity and arrhythmias'
-          });
-        }
-
-        // Added: Benzodiazepines + Opioids (from NIA, respiratory depression)
-        if (drug1.includes('benzodiazepine') && drug2.includes('opioid')) {
-          interactions.push({
-            drug1: medications[i].name,
-            drug2: medications[j].name,
-            severity: 'major',
-            description: 'Increased risk of respiratory depression and sedation'
-          });
-        }
-
-        // Added: Warfarin + Acetaminophen (from Muse Treatment, bleeding risk if high doses)
-        if (drug1.includes('warfarin') && drug2.includes('acetaminophen')) {
-          interactions.push({
-            drug1: medications[i].name,
-            drug2: medications[j].name,
-            severity: 'moderate',
-            description: 'May increase bleeding risk with high doses of acetaminophen'
-          });
-        }
-
-        // Added: Lithium + Loop Diuretics (from GoodRx, lithium toxicity)
-        if (drug1.includes('lithium') && drug2.includes('furosemide')) { // Example loop diuretic
-          interactions.push({
-            drug1: medications[i].name,
-            drug2: medications[j].name,
-            severity: 'major',
-            description: 'Increased risk of lithium toxicity due to reduced clearance'
-          });
-        }
-
-        // Added: MAOIs + SSRIs (from AAFP, serotonin syndrome)
-        if (drug1.includes('mao inhibitor') && drug2.includes('ssri')) {
-          interactions.push({
-            drug1: medications[i].name,
-            drug2: medications[j].name,
-            severity: 'major',
-            description: 'Risk of serotonin syndrome'
-          });
-        }
-
-        // Added: Theophylline + Quinolones (from AAFP, theophylline toxicity)
-        if (drug1.includes('theophylline') && drug2.includes('quinolone')) {
-          interactions.push({
-            drug1: medications[i].name,
-            drug2: medications[j].name,
-            severity: 'moderate',
-            description: 'Increased theophylline levels leading to toxicity'
-          });
-        }
+  // Fetch existing prescriptions for this visit
+  const fetchPrescriptions = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/prescriptions/?visit=${visitId}`, {
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        // Ensure each prescription has an items array
+        const prescriptionsWithItems = (data.results || data).map((prescription: any) => ({
+          ...prescription,
+          items: prescription.items || []
+        }));
+        setExistingPrescriptions(prescriptionsWithItems);
+      } else {
+        console.error('Failed to fetch prescriptions');
       }
-    }
-    
-    setDrugInteractions(interactions);
-  };
-
-  const getInteractionColor = (severity: string) => {
-    switch (severity) {
-      case 'major': return 'bg-red-100 text-red-800 border-red-200';
-      case 'moderate': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-      case 'minor': return 'bg-blue-100 text-blue-800 border-blue-200';
-      default: return 'bg-gray-100 text-gray-800 border-gray-200';
+    } catch (error) {
+      console.error('Error fetching prescriptions:', error);
     }
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'filled': return 'bg-green-100 text-green-800 border-green-200';
-      case 'pending': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-      case 'cancelled': return 'bg-red-100 text-red-800 border-red-200';
-      default: return 'bg-gray-100 text-gray-800 border-gray-200';
+  // Fetch available medications
+  const fetchMedications = async (search = '') => {
+    try {
+      const url = search 
+        ? `${API_URL}/api/medications/?search=${encodeURIComponent(search)}`
+        : `${API_URL}/api/medications/`;
+      
+      const response = await fetch(url, {
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setMedications(data.results || data);
+      }
+    } catch (error) {
+      console.error('Error fetching medications:', error);
     }
   };
 
-  const calculateQuantity = (frequency: string, duration: string): number => {
-    // Simple calculation based on frequency and duration
-    const durationMatch = duration.match(/(\d+)\s*(day|week|month)/i);
-    if (!durationMatch) return 1;
-    
-    const durationNum = parseInt(durationMatch[1]);
-    const durationUnit = durationMatch[2].toLowerCase();
-    
-    let daysTotal = durationNum;
-    if (durationUnit === 'week') daysTotal *= 7;
-    if (durationUnit === 'month') daysTotal *= 30;
-    
-    const frequencyMap: Record<string, number> = {
-      'once_daily': 1,
-      'twice_daily': 2,
-      'three_times_daily': 3,
-      'four_times_daily': 4,
-      'every_4_hours': 6,
-      'every_6_hours': 4,
-      'every_8_hours': 3,
+  // Check for drug interactions
+  const checkDrugInteractions = async (medicationIds: string[]) => {
+    if (medicationIds.length < 2) {
+      setDrugInteractions([]);
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/api/medications/check-interactions/`, {
+        method: 'POST',
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ medication_ids: medicationIds })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setDrugInteractions(data.interactions || []);
+      }
+    } catch (error) {
+      console.error('Error checking drug interactions:', error);
+    }
+  };
+
+  useEffect(() => {
+    const loadData = async () => {
+      setLoading(true);
+      await Promise.all([
+        fetchPrescriptions(),
+        fetchMedications()
+      ]);
+      setLoading(false);
     };
     
-    const dailyDoses = frequencyMap[frequency] || 1;
-    return Math.ceil(daysTotal * dailyDoses * 1.1); // 10% extra
-  };
+    loadData();
+  }, [visitId]);
+
+  // Check interactions when medications change
+  useEffect(() => {
+    const selectedMedications = formData.items
+      .filter(item => item.medication)
+      .map(item => item.medication);
+    
+    checkDrugInteractions(selectedMedications);
+  }, [formData.items]);
 
   const onSubmit = async (data: PrescriptionForm) => {
     setIsSending(true);
+    
     try {
-      // Added: Handle editing existing prescription
-      if (editingId) {
-        setExistingPrescriptions(prev => prev.map(p => 
-          p.id === editingId 
-            ? { 
-                ...p, 
-                medications: data.medications.map((med, index) => ({
-                  ...med,
-                  id: index.toString()
-                })),
-                notes: data.prescriptionNotes || '',
-                prescribedAt: new Date().toLocaleString(),
-                status: 'pending' // Reset to pending after resend
-              } 
-            : p
-        ));
+      const prescriptionData = {
+        visit: visitId,
+        items: data.items,
+        notes: data.notes || '',
+        priority: 'Medium' // Could be dynamic based on consultation
+      };
+
+      const response = await fetch(`${API_URL}/api/prescriptions/`, {
+        method: 'POST',
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(prescriptionData)
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        
+        // Refresh prescriptions list
+        await fetchPrescriptions();
+        
+        // Reset form
+        reset();
         setEditingId(null);
+        
+        // Show success message
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+        
+        // Redirect to pharmacy queue after a short delay
+        setTimeout(() => {
+          window.location.href = '/pharmacy-queue';
+        }, 1500);
       } else {
-        const newPrescription: Prescription = {
-          id: `rx-${Date.now()}`,
-          medications: data.medications.map((med, index) => ({
-            ...med,
-            id: index.toString()
-          })),
-          prescribedAt: new Date().toLocaleString(),
-          status: 'pending',
-          pharmacist: 'Not assigned',
-          notes: data.prescriptionNotes || ''
-        };
-
-        setExistingPrescriptions(prev => [newPrescription, ...prev]);
+        const errorData = await response.json();
+        console.error('Failed to create prescription:', errorData);
+        alert('Failed to send prescription to pharmacy. Please try again.');
       }
-
-      reset();
-      
-      console.log('Prescription sent to pharmacy successfully');
     } catch (error) {
-      console.error('Failed to send prescription:', error);
+      console.error('Error creating prescription:', error);
+      alert('Failed to send prescription to pharmacy. Please try again.');
     } finally {
       setIsSending(false);
     }
   };
 
-  // Added: Function to handle canceling a prescription
-  const handleCancel = (id: string) => {
+  const handleCancel = async (prescriptionId: string) => {
     if (confirm('Are you sure you want to cancel this prescription?')) {
-      setExistingPrescriptions(prev => prev.map(p => 
-        p.id === id ? { ...p, status: 'cancelled' } : p
-      ));
-    }
-  };
+      try {
+        const response = await fetch(`${API_URL}/api/prescriptions/${prescriptionId}/`, {
+          method: 'PATCH',
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ status: 'Cancelled' })
+        });
 
-  // Added: Function to handle modifying a prescription
-  const handleModify = (prescription: Prescription) => {
-    setEditingId(prescription.id);
-    reset({
-      medications: prescription.medications.map(med => ({ ...med })),
-      prescriptionNotes: prescription.notes
-    });
+        if (response.ok) {
+          await fetchPrescriptions();
+          alert('Prescription cancelled successfully');
+        }
+      } catch (error) {
+        console.error('Error cancelling prescription:', error);
+        alert('Failed to cancel prescription');
+      }
+    }
   };
 
   const getSuggestedMedications = (searchTerm: string) => {
     if (!searchTerm || searchTerm.length < 2) return [];
     
-    return commonMedications.filter(med => 
+    return medications.filter(med => 
       med.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      med.generic_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       med.category.toLowerCase().includes(searchTerm.toLowerCase())
     );
   };
 
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <Card>
+          <CardContent className="py-8 text-center">
+            <div className="animate-spin h-8 w-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-4"></div>
+            <p>Loading prescriptions...</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
+      {/* Success Notification */}
+      {showSuccess && (
+        <Card className="border-green-200 bg-green-50">
+          <CardContent className="pt-6">
+            <div className="flex items-center text-green-700">
+              <CheckCircle className="h-5 w-5 mr-2" />
+              <p>Prescription sent to pharmacy successfully! Redirecting to queue...</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Drug Interaction Warnings */}
       {drugInteractions.length > 0 && (
         <Alert className="border-orange-200 bg-orange-50">
@@ -426,10 +354,15 @@ const Prescriptions: React.FC<PrescriptionsProps> = ({ visitId }) => {
             <strong>Drug Interaction Warning:</strong>
             <ul className="mt-2 space-y-1">
               {drugInteractions.map((interaction, index) => (
-                <li key={index} className={`p-2 rounded border ${getInteractionColor(interaction.severity)}`}>
+                <li key={index} className={`p-2 rounded border ${
+                  interaction.severity === 'Major' ? 'bg-red-100 border-red-200' : 
+                  interaction.severity === 'Moderate' ? 'bg-yellow-100 border-yellow-200' : 
+                  'bg-blue-100 border-blue-200'
+                }`}>
                   <strong>{interaction.drug1} + {interaction.drug2}</strong> 
                   <span className="ml-2 capitalize">({interaction.severity})</span>
                   <div className="text-sm mt-1">{interaction.description}</div>
+                  <div className="text-sm mt-1 font-medium">Recommendation: {interaction.recommendation}</div>
                 </li>
               ))}
             </ul>
@@ -437,10 +370,9 @@ const Prescriptions: React.FC<PrescriptionsProps> = ({ visitId }) => {
         </Alert>
       )}
 
-      {/* New Prescription */}
+      {/* New Prescription Form */}
       <Card>
         <CardHeader>
-          {/* Modified: Change title based on editing mode */}
           <CardTitle className="flex items-center gap-2">
             <Pill className="h-5 w-5" />
             {editingId ? 'Edit Prescription' : 'Create Prescription'}
@@ -457,7 +389,7 @@ const Prescriptions: React.FC<PrescriptionsProps> = ({ visitId }) => {
                   variant="outline"
                   size="sm"
                   onClick={() => append({
-                    name: '',
+                    medication: '',
                     dosage: '',
                     frequency: '',
                     duration: '',
@@ -487,282 +419,170 @@ const Prescriptions: React.FC<PrescriptionsProps> = ({ visitId }) => {
                     )}
                   </div>
 
-                  <div className="grid gap-4 md:grid-cols-2">
-                    {/* Medication Name */}
-                    <div className="space-y-2">
-                      <Label>Medication Name *</Label>
-                      <div className="relative">
-                        <Controller
-                          name={`medications.${index}.name`}
-                          control={control}
-                          render={({ field }) => (
-                            <>
-                              <div className="relative">
-                                <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-400" />
-                                <Input
-                                  {...field}
-                                  placeholder="Search medication..."
-                                  className={`pl-8 ${errors.medications?.[index]?.name ? 'border-red-500' : ''}`}
-                                  onFocus={() => setShowSuggestions(index)}
-                                  onChange={(e) => {
-                                    field.onChange(e);
-                                    setMedicationSearch(e.target.value);
-                                  }}
-                                />
-                              </div>
-                              
-                              {showSuggestions === index && medicationSearch && (
-                                <div className="absolute z-10 w-full bg-white border rounded-md shadow-lg mt-1 max-h-60 overflow-auto">
-                                  {getSuggestedMedications(medicationSearch).map((med, medIndex) => (
-                                    <div
-                                      key={medIndex}
-                                      className="p-3 hover:bg-gray-100 cursor-pointer border-b"
-                                      onClick={() => {
-                                        field.onChange(med.name);
-                                        setShowSuggestions(null);
-                                        setMedicationSearch('');
-                                      }}
-                                    >
-                                      <div className="flex items-center justify-between">
-                                        <div>
-                                          <div className="font-medium">{med.name}</div>
-                                          <div className="text-sm text-gray-600">{med.category}</div>
-                                        </div>
-                                        <Badge variant="outline" className="text-xs">
-                                          {med.category}
-                                        </Badge>
-                                      </div>
-                                      {med.commonDosages.length > 0 && (
-                                        <div className="text-xs text-blue-600 mt-1">
-                                          Common dosages: {med.commonDosages.join(', ')}
-                                        </div>
-                                      )}
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </>
-                          )}
-                        />
-                      </div>
-                      {errors.medications?.[index]?.name && (
-                        <p className="text-red-500 text-sm">{errors.medications[index]?.name?.message}</p>
-                      )}
-                    </div>
-
-                    {/* Dosage */}
-                    <div className="space-y-2">
-                      <Label>Dosage *</Label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor={`items.${index}.medication`}>Medication *</Label>
                       <Controller
-                        name={`medications.${index}.dosage`}
+                        name={`items.${index}.medication`}
                         control={control}
                         render={({ field }) => (
-                          <Input
-                            {...field}
-                            placeholder="e.g., 500mg, 10ml"
-                            className={errors.medications?.[index]?.dosage ? 'border-red-500' : ''}
-                          />
+                          <div className="relative">
+                            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                            <Input
+                              {...field}
+                              className="pl-10"
+                              placeholder="Search medications..."
+                              onChange={(e) => {
+                                field.onChange(e);
+                                setMedicationSearch(e.target.value);
+                                setShowSuggestions(index);
+                              }}
+                              onFocus={() => setShowSuggestions(index)}
+                            />
+                            {showSuggestions === index && medicationSearch && (
+                              <div className="absolute z-10 w-full bg-white border rounded-md shadow-lg max-h-48 overflow-y-auto">
+                                {getSuggestedMedications(medicationSearch).map((med) => (
+                                  <div
+                                    key={med.id}
+                                    className="p-2 hover:bg-gray-100 cursor-pointer"
+                                    onClick={() => {
+                                      setValue(`items.${index}.medication`, med.id);
+                                      setShowSuggestions(null);
+                                      setMedicationSearch('');
+                                    }}
+                                  >
+                                    {med.name} {med.strength} - {med.dosage_form}
+                                  </div>
+                                ))}
+                                {getSuggestedMedications(medicationSearch).length === 0 && (
+                                  <div className="p-2 text-gray-500">No medications found</div>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         )}
                       />
-                      {errors.medications?.[index]?.dosage && (
-                        <p className="text-red-500 text-sm">{errors.medications[index]?.dosage?.message}</p>
+                      {errors.items?.[index]?.medication && (
+                        <p className="text-red-500 text-xs mt-1">{errors.items[index]?.medication?.message}</p>
                       )}
                     </div>
 
-                    {/* Frequency */}
-                    <div className="space-y-2">
-                      <Label>Frequency *</Label>
+                    <div>
+                      <Label htmlFor={`items.${index}.dosage`}>Dosage *</Label>
+                      <Input
+                        {...control.register(`items.${index}.dosage`)}
+                        placeholder="e.g., 500mg"
+                      />
+                      {errors.items?.[index]?.dosage && (
+                        <p className="text-red-500 text-xs mt-1">{errors.items[index]?.dosage?.message}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <Label htmlFor={`items.${index}.frequency`}>Frequency *</Label>
                       <Controller
-                        name={`medications.${index}.frequency`}
+                        name={`items.${index}.frequency`}
                         control={control}
                         render={({ field }) => (
-                          <Select value={field.value} onValueChange={field.onChange}>
-                            <SelectTrigger className={errors.medications?.[index]?.frequency ? 'border-red-500' : ''}>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <SelectTrigger>
                               <SelectValue placeholder="Select frequency" />
                             </SelectTrigger>
                             <SelectContent>
-                              {frequencyOptions.map((freq) => (
-                                <SelectItem key={freq.value} value={freq.value}>
-                                  <div className="flex items-center justify-between w-full">
-                                    <span>{freq.label}</span>
-                                    <Badge variant="outline" className="ml-2 text-xs">
-                                      {freq.abbreviation}
-                                    </Badge>
-                                  </div>
+                              {frequencyOptions.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                  {option.label} ({option.abbreviation})
                                 </SelectItem>
                               ))}
                             </SelectContent>
                           </Select>
                         )}
                       />
-                      {errors.medications?.[index]?.frequency && (
-                        <p className="text-red-500 text-sm">{errors.medications[index]?.frequency?.message}</p>
+                      {errors.items?.[index]?.frequency && (
+                        <p className="text-red-500 text-xs mt-1">{errors.items[index]?.frequency?.message}</p>
                       )}
                     </div>
 
-                    {/* Duration */}
-                    <div className="space-y-2">
-                      <Label>Duration *</Label>
-                      <Controller
-                        name={`medications.${index}.duration`}
-                        control={control}
-                        render={({ field }) => (
-                          <Input
-                            {...field}
-                            placeholder="e.g., 7 days, 2 weeks"
-                            className={errors.medications?.[index]?.duration ? 'border-red-500' : ''}
-                            onChange={(e) => {
-                              field.onChange(e);
-                              // Auto-calculate quantity
-                              const frequency = formData.medications[index]?.frequency;
-                              if (frequency && e.target.value) {
-                                const calculatedQty = calculateQuantity(frequency, e.target.value);
-                                setValue(`medications.${index}.quantity`, calculatedQty);
-                              }
-                            }}
-                          />
-                        )}
+                    <div>
+                      <Label htmlFor={`items.${index}.duration`}>Duration *</Label>
+                      <Input
+                        {...control.register(`items.${index}.duration`)}
+                        placeholder="e.g., 7 days"
                       />
-                      {errors.medications?.[index]?.duration && (
-                        <p className="text-red-500 text-sm">{errors.medications[index]?.duration?.message}</p>
+                      {errors.items?.[index]?.duration && (
+                        <p className="text-red-500 text-xs mt-1">{errors.items[index]?.duration?.message}</p>
                       )}
                     </div>
 
-                    {/* Route */}
-                    <div className="space-y-2">
-                      <Label>Route *</Label>
+                    <div>
+                      <Label htmlFor={`items.${index}.route`}>Route *</Label>
                       <Controller
-                        name={`medications.${index}.route`}
+                        name={`items.${index}.route`}
                         control={control}
                         render={({ field }) => (
-                          <Select value={field.value} onValueChange={field.onChange}>
+                          <Select onValueChange={field.onChange} value={field.value}>
                             <SelectTrigger>
-                              <SelectValue />
+                              <SelectValue placeholder="Select route" />
                             </SelectTrigger>
                             <SelectContent>
-                              {routeOptions.map((route) => (
-                                <SelectItem key={route.value} value={route.value}>
-                                  <div className="flex items-center justify-between w-full">
-                                    <span>{route.label}</span>
-                                    <Badge variant="outline" className="ml-2 text-xs">
-                                      {route.abbreviation}
-                                    </Badge>
-                                  </div>
+                              {routeOptions.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                  {option.label} ({option.abbreviation})
                                 </SelectItem>
                               ))}
                             </SelectContent>
                           </Select>
                         )}
                       />
+                      {errors.items?.[index]?.route && (
+                        <p className="text-red-500 text-xs mt-1">{errors.items[index]?.route?.message}</p>
+                      )}
                     </div>
 
-                    {/* Quantity */}
-                    <div className="space-y-2">
-                      <Label>Quantity *</Label>
-                      <Controller
-                        name={`medications.${index}.quantity`}
-                        control={control}
-                        render={({ field }) => (
-                          <Input
-                            {...field}
-                            type="number"
-                            min="1"
-                            placeholder="30"
-                            value={field.value || ''}
-                            onChange={(e) => field.onChange(parseInt(e.target.value) || 1)}
-                            className={errors.medications?.[index]?.quantity ? 'border-red-500' : ''}
-                          />
-                        )}
+                    <div>
+                      <Label htmlFor={`items.${index}.quantity`}>Quantity *</Label>
+                      <Input
+                        type="number"
+                        {...control.register(`items.${index}.quantity`, { valueAsNumber: true })}
+                        min="1"
                       />
-                      {errors.medications?.[index]?.quantity && (
-                        <p className="text-red-500 text-sm">{errors.medications[index]?.quantity?.message}</p>
+                      {errors.items?.[index]?.quantity && (
+                        <p className="text-red-500 text-xs mt-1">{errors.items[index]?.quantity?.message}</p>
                       )}
                     </div>
                   </div>
 
-                  {/* Special Instructions */}
-                  <div className="space-y-2">
-                    <Label>Special Instructions</Label>
-                    <Controller
-                      name={`medications.${index}.instructions`}
-                      control={control}
-                      render={({ field }) => (
-                        <Input
-                          {...field}
-                          placeholder="e.g., Take with food, Avoid alcohol"
-                        />
-                      )}
+                  <div>
+                    <Label htmlFor={`items.${index}.instructions`}>Instructions</Label>
+                    <Textarea
+                      {...control.register(`items.${index}.instructions`)}
+                      placeholder="Additional instructions"
                     />
                   </div>
-
-                  {/* Medication Summary */}
-                  {formData.medications[index]?.name && (
-                    <div className="p-3 bg-blue-50 border border-blue-200 rounded">
-                      <div className="text-sm">
-                        <strong>Prescription Summary:</strong>
-                        <div className="mt-1">
-                          {formData.medications[index].name} {formData.medications[index].dosage}
-                          {formData.medications[index].frequency && (
-                            <span> - {frequencyOptions.find(f => f.value === formData.medications[index].frequency)?.label}</span>
-                          )}
-                          {formData.medications[index].duration && (
-                            <span> for {formData.medications[index].duration}</span>
-                          )}
-                          {formData.medications[index].quantity && (
-                            <span> (Qty: {formData.medications[index].quantity})</span>
-                          )}
-                        </div>
-                        {formData.medications[index].instructions && (
-                          <div className="mt-1 text-blue-700">
-                            <AlertTriangle className="inline h-3 w-3 mr-1" />
-                            {formData.medications[index].instructions}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
                 </div>
               ))}
 
-              {errors.medications && typeof errors.medications === 'object' && 'message' in errors.medications && (
-                <p className="text-red-500 text-sm">{errors.medications.message}</p>
+              {errors.items && (
+                <p className="text-red-500 text-xs mt-1">{errors.items.message}</p>
               )}
             </div>
 
-            {/* Prescription Notes */}
-            <div className="space-y-2">
-              <Label>Prescription Notes</Label>
-              <Controller
-                name="prescriptionNotes"
-                control={control}
-                render={({ field }) => (
-                  <Textarea
-                    {...field}
-                    placeholder="Additional notes for pharmacist..."
-                    className="min-h-16"
-                  />
-                )}
+            {/* Notes */}
+            <div>
+              <Label htmlFor="notes">Prescription Notes</Label>
+              <Textarea
+                {...control.register("notes")}
+                placeholder="Any additional notes for the pharmacy"
               />
             </div>
 
-            {/* Submit Button */}
-            <div className="flex justify-end">
-              <Button 
-                type="submit"
-                disabled={isSending || !isDirty || fields.length === 0}
-                className="min-w-40"
-              >
-                {isSending ? (
-                  <>
-                    <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full mr-2"></div>
-                    Sending...
-                  </>
-                ) : (
-                  <>
-                    <Send className="mr-2 h-4 w-4" />
-                    {editingId ? 'Resend to Pharmacy' : 'Send to Pharmacy'}
-                  </>
-                )}
+            <div className="flex justify-end gap-2">
+              <Button type="submit" disabled={isSending || !isDirty}>
+                <Send className="h-4 w-4 mr-2" />
+                {isSending ? 'Sending...' : 'Send to Pharmacy'}
+              </Button>
+              <Button type="button" variant="outline" onClick={() => reset()}>
+                Reset
               </Button>
             </div>
           </form>
@@ -770,105 +590,66 @@ const Prescriptions: React.FC<PrescriptionsProps> = ({ visitId }) => {
       </Card>
 
       {/* Existing Prescriptions */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Recent Prescriptions ({existingPrescriptions.length})</CardTitle>
-            <Badge variant="outline" className="text-xs">
-              Updated: {new Date().toLocaleTimeString()}
-            </Badge>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {existingPrescriptions.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                <Pill className="h-12 w-12 mx-auto mb-3 text-gray-300" />
-                <p>No prescriptions created yet</p>
-              </div>
-            ) : (
-              existingPrescriptions.map((prescription) => (
-                <div key={prescription.id} className="border rounded-lg p-4 space-y-3">
-                  <div className="flex justify-between items-center">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">Prescription #{prescription.id}</span>
-                      <Badge className={getStatusColor(prescription.status)}>
-                        {prescription.status}
-                      </Badge>
-                    </div>
-                    <div className="text-sm text-gray-500">
-                      <Clock className="inline h-4 w-4 mr-1" />
-                      {prescription.prescribedAt}
-                    </div>
-                  </div>
-                  
-                  <div className="space-y-2">
+      {existingPrescriptions.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5" />
+              Existing Prescriptions
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-6">
+              {existingPrescriptions.map((prescription) => (
+                <div key={prescription.id} className="border rounded-lg p-4 space-y-4">
+                  <div className="flex items-center justify-between">
                     <div>
-                      <span className="text-sm font-medium text-gray-700">Medications:</span>
-                      <div className="space-y-2 mt-1">
-                        {prescription.medications.map((med, index) => (
-                          <div key={index} className="bg-gray-50 p-3 rounded border">
-                            <div className="flex items-start justify-between">
-                              <div>
-                                <div className="font-medium">{med.name} {med.dosage}</div>
-                                <div className="text-sm text-gray-600">
-                                  {frequencyOptions.find(f => f.value === med.frequency)?.label || med.frequency} 
-                                  {med.duration && ` for ${med.duration}`}
-                                  {med.route !== 'oral' && ` (${routeOptions.find(r => r.value === med.route)?.abbreviation})`}
-                                </div>
-                                <div className="text-sm text-gray-600">Quantity: {med.quantity}</div>
-                                {med.instructions && (
-                                  <div className="text-sm text-blue-600 mt-1">
-                                    <AlertTriangle className="inline h-3 w-3 mr-1" />
-                                    {med.instructions}
-                                  </div>
-                                )}
-                              </div>
-                              <Badge variant="outline" className="text-xs">
-                                #{index + 1}
-                              </Badge>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
+                      <h4 className="font-medium">Prescription #{prescription.id.slice(-6)}</h4>
+                      <p className="text-sm text-gray-600">
+                        Created: {new Date(prescription.created_at).toLocaleString()} by {prescription.prescribed_by_name}
+                      </p>
                     </div>
-                    
-                    {prescription.notes && (
-                      <div>
-                        <span className="text-sm font-medium text-gray-700">Notes:</span>
-                        <p className="text-sm text-gray-600 mt-1">{prescription.notes}</p>
-                      </div>
-                    )}
-                    
-                    <div className="text-sm text-gray-600">
-                      <span className="font-medium">Pharmacist:</span> {prescription.pharmacist}
+                    <div className="flex gap-2">
+                      <Badge className="bg-blue-100 text-blue-800 border-blue-200">{prescription.status}</Badge>
+                      {prescription.status === 'Pending' && (
+                        <Button 
+                          variant="destructive" 
+                          size="sm" 
+                          onClick={() => handleCancel(prescription.id)}
+                        >
+                          Cancel
+                        </Button>
+                      )}
                     </div>
                   </div>
-                  
-                  {/* Action buttons */}
-                  <div className="flex gap-2 pt-2 border-t">
-                    {prescription.status === 'pending' && (
-                      <>
-                        <Button variant="outline" size="sm" onClick={() => handleCancel(prescription.id)}>
-                          Cancel Prescription
-                        </Button>
-                        <Button variant="outline" size="sm" onClick={() => handleModify(prescription)}>
-                          Modify
-                        </Button>
-                      </>
-                    )}
-                    {prescription.status === 'filled' && (
-                      <Button variant="outline" size="sm">
-                        View Dispensing Details
-                      </Button>
-                    )}
+
+                  <div className="space-y-2">
+                    {(prescription.items || []).map((item, idx) => (
+                      <div key={idx} className="bg-gray-50 p-3 rounded text-sm">
+                        <div className="font-medium">{item.medication} {item.dosage}</div>
+                        <div className="text-gray-600">
+                          {item.frequency} for {item.duration} • Quantity: {item.quantity}
+                        </div>
+                        <div className="text-gray-600">{item.instructions}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {prescription.notes && (
+                    <div className="text-sm text-gray-600">
+                      <strong>Notes:</strong> {prescription.notes}
+                    </div>
+                  )}
+
+                  <div className="text-sm text-gray-600">
+                    <strong>Status:</strong> {prescription.available_items} available, {prescription.out_of_stock_items} out of stock, {prescription.dispensed_items} dispensed
                   </div>
                 </div>
-              ))
-            )}
-          </div>
-        </CardContent>
-      </Card>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };

@@ -1,9 +1,10 @@
 "use client";
-import React, { useEffect, useMemo, useState } from "react";
+
+import React, { useState, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Pencil, Trash2, Plus, Search, Eye, Calendar, User } from "lucide-react";
-import { Tooltip, TooltipProvider, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { Pencil, Trash2, User, Search, Eye, Plus, AlertCircle, RefreshCw } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -29,35 +30,50 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/lib/toast";
-import PatientOverviewModalContent from "@/components/medical-records/patientoverviewmodal";
-import Link from "next/link";
-import {
-  nameTitles,
-  dependentRelationships,
-  genders,
-  maritalStatuses,
-  bloodGroups,
-  genotypes,
-  nokRelationships,
-  dependentTypes,
-  nigerianStates,
-} from "@/lib/constants";
+import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Separator } from "@/components/ui/separator";
+
+// Constants from your register patient page and Django model
+const nameTitles = ["Mr", "Mrs", "Miss", "Dr", "Prof", "Rev", "Chief"];
+const genders = ["Male", "Female"];
+const bloodGroups = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
+const genotypes = ["AA", "AS", "SS", "AC", "SC"];
+const nokRelationships = ["Spouse", "Son", "Daughter", "Parent", "Sibling", "Guardian", "Other"];
+const maritalStatuses = ["Single", "Married", "Divorced", "Widowed"];
+const nigerianStates = [
+  "Abia", "Adamawa", "Akwa Ibom", "Anambra", "Bauchi", "Bayelsa", "Benue", "Borno",
+  "Cross River", "Delta", "Ebonyi", "Edo", "Ekiti", "Enugu", "FCT", "Gombe", "Imo",
+  "Jigawa", "Kaduna", "Kano", "Katsina", "Kebbi", "Kogi", "Kwara", "Lagos", "Nasarawa",
+  "Niger", "Ogun", "Ondo", "Osun", "Oyo", "Plateau", "Rivers", "Sokoto", "Taraba",
+  "Yobe", "Zamfara"
+];
+
+interface NextOfKin {
+  firstName: string;
+  lastName: string;
+  relationship: string;
+  address: string;
+  phone: string;
+}
 
 interface Dependent {
   id: string;
-  sponsor_id: string;
-  type: "Employee Dependent" | "Retiree Dependent";
-  title: string;
+  patient_id: string;
+  personal_number?: string;
+  name: string;
   surname: string;
   first_name: string;
   last_name: string;
-  name: string;
+  title: string;
   relationship: string;
+  age: number;
   gender: string;
+  created_at: string;
+  patient_type: "Dependent";
+  dependent_type: "Employee Dependent" | "Retiree Dependent";
   date_of_birth: string;
-  age: string;
   marital_status: string;
   email: string;
   phone: string;
@@ -69,433 +85,91 @@ interface Dependent {
   local_government_area: string;
   blood_group: string;
   genotype: string;
-  created_at: string;
-  next_of_kin: {
-    first_name: string;
-    last_name: string;
-    relationship: string;
-    address: string;
-    phone: string;
-  };
+  nok_first_name: string;
+  nok_last_name: string;
+  nok_relationship: string;
+  nok_address: string;
+  nok_phone: string;
+  sponsor_id: string;
+  photo?: string;
+  photo_url?: string;
 }
 
 interface Sponsor {
   id: string;
-  name: string;
-  type: "Employee" | "Retiree";
+  patient_id: string;
+  personal_number: string;
+  surname: string;
+  first_name: string;
+  last_name: string;
+  patient_type: "Employee" | "Retiree";
+  title: string;
+  gender: string;
+  age: number;
+  email: string;
+  phone: string;
+  created_at: string;
   dependents: Dependent[];
+  maxDependents: number;
+  photo_url?: string;
 }
 
-interface APIError {
-  detail?: string;
-  [key: string]: string | string[] | undefined;
-}
+const EMPTY_NOK: NextOfKin = {
+  firstName: "",
+  lastName: "",
+  relationship: "",
+  address: "",
+  phone: "",
+};
 
-const Loader = () => <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-900" />;
-
-const DependentFormFields = ({
-  formData,
-  updateField,
-  updateNok,
-  handlePhotoChange,
-  photoPreview,
-  apiErrors,
-}: {
-  formData: any;
-  updateField: (field: string, value: string) => void;
-  updateNok: (field: string, value: string) => void;
-  handlePhotoChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  photoPreview: string | null;
-  apiErrors: Record<string, string>;
-}) => (
-  <div className="space-y-6">
-    <fieldset className="p-4 border rounded">
-      <legend className="font-semibold">Sponsor Information</legend>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
-        <div>
-          <Label>Sponsor Personal Number</Label>
-          <Input value={formData.sponsor_id} disabled className="bg-gray-50" />
-          {apiErrors.sponsor_id && <p className="text-red-500 text-sm">{apiErrors.sponsor_id}</p>}
-        </div>
-        <div>
-          <Label>Dependent Type *</Label>
-          <Select
-            value={formData.type}
-            onValueChange={(v: string) => v && updateField("type", v)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select type" />
-            </SelectTrigger>
-            <SelectContent>
-              {dependentTypes.map((t: string) => (
-                <SelectItem key={t} value={t}>{t}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {apiErrors.type && <p className="text-red-500 text-sm">{apiErrors.type}</p>}
-        </div>
-      </div>
-    </fieldset>
-    <fieldset className="p-4 border rounded">
-      <legend className="font-semibold">Personal Details</legend>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-2">
-        <div className="md:row-span-2 flex flex-col items-center justify-center">
-          <div className="w-32 h-32 rounded-full overflow-hidden bg-gray-200 flex items-center justify-center mb-2">
-            {photoPreview ? (
-              <img src={photoPreview} alt="Dependent preview" className="w-full h-full object-cover" />
-            ) : (
-              <User className="h-16 w-16 text-gray-400" />
-            )}
-          </div>
-          <Label htmlFor="photo-upload" className="cursor-pointer">
-            <Input
-              id="photo-upload"
-              type="file"
-              accept="image/*"
-              onChange={handlePhotoChange}
-              className="hidden"
-            />
-            <Button variant="outline" size="sm" asChild>
-              <label htmlFor="photo-upload">Upload Photo</label>
-            </Button>
-          </Label>
-        </div>
-        <div>
-          <Label>Title</Label>
-          <Select
-            value={formData.title}
-            onValueChange={(v: string) => v && updateField("title", v)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select title" />
-            </SelectTrigger>
-            <SelectContent>
-              {nameTitles.map((t: string) => (
-                <SelectItem key={t} value={t}>{t}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {apiErrors.title && <p className="text-red-500 text-sm">{apiErrors.title}</p>}
-        </div>
-        <div>
-          <Label>Surname *</Label>
-          <Input
-            value={formData.surname}
-            onChange={(e) => updateField("surname", e.target.value)}
-            placeholder="Enter surname"
-          />
-          {apiErrors.surname && <p className="text-red-500 text-sm">{apiErrors.surname}</p>}
-        </div>
-        <div>
-          <Label>First Name *</Label>
-          <Input
-            value={formData.first_name}
-            onChange={(e) => updateField("first_name", e.target.value)}
-            placeholder="Enter first name"
-          />
-          {apiErrors.first_name && <p className="text-red-500 text-sm">{apiErrors.first_name}</p>}
-        </div>
-        <div>
-          <Label>Last Name</Label>
-          <Input
-            value={formData.last_name}
-            onChange={(e) => updateField("last_name", e.target.value)}
-            placeholder="Enter last name"
-          />
-          {apiErrors.last_name && <p className="text-red-500 text-sm">{apiErrors.last_name}</p>}
-        </div>
-      </div>
-    </fieldset>
-    <fieldset className="p-4 border rounded">
-      <legend className="font-semibold">Work & Personal Information</legend>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-2">
-        <div>
-          <Label>Relationship *</Label>
-          <Select
-            value={formData.relationship}
-            onValueChange={(v: string) => v && updateField("relationship", v)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select relationship" />
-            </SelectTrigger>
-            <SelectContent>
-              {dependentRelationships.map((r: string) => (
-                <SelectItem key={r} value={r}>{r}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {apiErrors.relationship && <p className="text-red-500 text-sm">{apiErrors.relationship}</p>}
-        </div>
-        <div>
-          <Label>Gender *</Label>
-          <Select
-            value={formData.gender}
-            onValueChange={(v: string) => v && updateField("gender", v)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select gender" />
-            </SelectTrigger>
-            <SelectContent>
-              {genders.map((g: string) => (
-                <SelectItem key={g} value={g}>{g}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {apiErrors.gender && <p className="text-red-500 text-sm">{apiErrors.gender}</p>}
-        </div>
-        <div>
-          <Label>Marital Status</Label>
-          <Select
-            value={formData.marital_status}
-            onValueChange={(v: string) => v && updateField("marital_status", v)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select marital status" />
-            </SelectTrigger>
-            <SelectContent>
-              {maritalStatuses.map((m: string) => (
-                <SelectItem key={m} value={m}>{m}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {apiErrors.marital_status && <p className="text-red-500 text-sm">{apiErrors.marital_status}</p>}
-        </div>
-        <div>
-          <Label>Date of Birth *</Label>
-          <Input
-            type="date"
-            value={formData.date_of_birth}
-            onChange={(e) => updateField("date_of_birth", e.target.value)}
-          />
-          {apiErrors.date_of_birth && <p className="text-red-500 text-sm">{apiErrors.date_of_birth}</p>}
-        </div>
-        <div>
-          <Label>Age</Label>
-          <Input value={formData.age} disabled className="bg-gray-50" />
-        </div>
-      </div>
-    </fieldset>
-    <fieldset className="p-4 border rounded">
-      <legend className="font-semibold">Contact Information</legend>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-2">
-        <div>
-          <Label>Email</Label>
-          <Input
-            type="email"
-            value={formData.email}
-            onChange={(e) => updateField("email", e.target.value)}
-            placeholder="email@example.com"
-          />
-          {apiErrors.email && <p className="text-red-500 text-sm">{apiErrors.email}</p>}
-        </div>
-        <div>
-          <Label>Phone</Label>
-          <Input
-            value={formData.phone}
-            onChange={(e) => updateField("phone", e.target.value)}
-            placeholder="Phone number"
-          />
-          {apiErrors.phone && <p className="text-red-500 text-sm">{apiErrors.phone}</p>}
-        </div>
-        <div>
-          <Label>State of Residence</Label>
-          <Select
-            value={formData.state_of_residence}
-            onValueChange={(v: string) => v && updateField("state_of_residence", v)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select state" />
-            </SelectTrigger>
-            <SelectContent>
-              {nigerianStates.map((s: string) => (
-                <SelectItem key={s} value={s}>{s}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {apiErrors.state_of_residence && <p className="text-red-500 text-sm">{apiErrors.state_of_residence}</p>}
-        </div>
-      </div>
-      <div className="mt-4">
-        <Label>Residential Address</Label>
-        <Input
-          value={formData.residential_address}
-          onChange={(e) => updateField("residential_address", e.target.value)}
-          placeholder="Current residential address"
-        />
-        {apiErrors.residential_address && <p className="text-red-500 text-sm">{apiErrors.residential_address}</p>}
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-        <div>
-          <Label>State of Origin</Label>
-          <Select
-            value={formData.state_of_origin}
-            onValueChange={(v: string) => v && updateField("state_of_origin", v)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select state" />
-            </SelectTrigger>
-            <SelectContent>
-              {nigerianStates.map((s: string) => (
-                <SelectItem key={s} value={s}>{s}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {apiErrors.state_of_origin && <p className="text-red-500 text-sm">{apiErrors.state_of_origin}</p>}
-        </div>
-        <div>
-          <Label>Local Government Area</Label>
-          <Input
-            value={formData.local_government_area}
-            onChange={(e) => updateField("local_government_area", e.target.value)}
-            placeholder="Local Government Area"
-          />
-          {apiErrors.local_government_area && <p className="text-red-500 text-sm">{apiErrors.local_government_area}</p>}
-        </div>
-      </div>
-      <div className="mt-4">
-        <Label>Permanent Address</Label>
-        <Input
-          value={formData.permanent_address}
-          onChange={(e) => updateField("permanent_address", e.target.value)}
-          placeholder="Permanent home address"
-        />
-        {apiErrors.permanent_address && <p className="text-red-500 text-sm">{apiErrors.permanent_address}</p>}
-      </div>
-    </fieldset>
-    <fieldset className="p-4 border rounded">
-      <legend className="font-semibold">Medical Details</legend>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
-        <div>
-          <Label>Blood Group</Label>
-          <Select
-            value={formData.blood_group}
-            onValueChange={(v: string) => v && updateField("blood_group", v)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select blood group" />
-            </SelectTrigger>
-            <SelectContent>
-              {bloodGroups.map((b: string) => (
-                <SelectItem key={b} value={b}>{b}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {apiErrors.blood_group && <p className="text-red-500 text-sm">{apiErrors.blood_group}</p>}
-        </div>
-        <div>
-          <Label>Genotype</Label>
-          <Select
-            value={formData.genotype}
-            onValueChange={(v: string) => v && updateField("genotype", v)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select genotype" />
-            </SelectTrigger>
-            <SelectContent>
-              {genotypes.map((g: string) => (
-                <SelectItem key={g} value={g}>{g}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {apiErrors.genotype && <p className="text-red-500 text-sm">{apiErrors.genotype}</p>}
-        </div>
-      </div>
-    </fieldset>
-    <fieldset className="p-4 border rounded">
-      <legend className="font-semibold">Next of Kin</legend>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-2">
-        <div>
-          <Label>First Name</Label>
-          <Input
-            value={formData.next_of_kin.first_name}
-            onChange={(e) => updateNok("first_name", e.target.value)}
-            placeholder="First name"
-          />
-          {apiErrors["next_of_kin.first_name"] && <p className="text-red-500 text-sm">{apiErrors["next_of_kin.first_name"]}</p>}
-        </div>
-        <div>
-          <Label>Last Name</Label>
-          <Input
-            value={formData.next_of_kin.last_name}
-            onChange={(e) => updateNok("last_name", e.target.value)}
-            placeholder="Last name"
-          />
-          {apiErrors["next_of_kin.last_name"] && <p className="text-red-500 text-sm">{apiErrors["next_of_kin.last_name"]}</p>}
-        </div>
-        <div>
-          <Label>Relationship</Label>
-          <Select
-            value={formData.next_of_kin.relationship}
-            onValueChange={(v: string) => v && updateNok("relationship", v)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select relationship" />
-            </SelectTrigger>
-            <SelectContent>
-              {nokRelationships.map((r: string) => (
-                <SelectItem key={r} value={r}>{r}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {apiErrors["next_of_kin.relationship"] && <p className="text-red-500 text-sm">{apiErrors["next_of_kin.relationship"]}</p>}
-        </div>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-        <div>
-          <Label>Address</Label>
-          <Input
-            value={formData.next_of_kin.address}
-            onChange={(e) => updateNok("address", e.target.value)}
-            placeholder="Address"
-          />
-          {apiErrors["next_of_kin.address"] && <p className="text-red-500 text-sm">{apiErrors["next_of_kin.address"]}</p>}
-        </div>
-        <div>
-          <Label>Phone</Label>
-          <Input
-            value={formData.next_of_kin.phone}
-            onChange={(e) => updateNok("phone", e.target.value)}
-            placeholder="Phone number"
-          />
-          {apiErrors["next_of_kin.phone"] && <p className="text-red-500 text-sm">{apiErrors["next_of_kin.phone"]}</p>}
-        </div>
-      </div>
-    </fieldset>
-  </div>
-);
-
-export default function DependentList() {
+export default function ManageDependents() {
   const { toast } = useToast();
   const [search, setSearch] = useState("");
-  const [typeFilter, setTypeFilter] = useState("All");
-  const [dependentsData, setDependentsData] = useState<Sponsor[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [sponsorsData, setSponsorsData] = useState<Sponsor[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [operationLoading, setOperationLoading] = useState({
+    add: false,
+    edit: false,
+    delete: false,
+    fetch: false
+  });
+  const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
-  const [addModalOpen, setAddModalOpen] = useState(false);
-  const [editModalData, setEditModalData] = useState<Dependent | null>(null);
-  const [viewModalData, setViewModalData] = useState<Dependent | null>(null);
-  const [deleteConfirm, setDeleteConfirm] = useState<{ sponsorId: string; dependentId: string; dependentName: string } | null>(null);
+  const [totalSponsors, setTotalSponsors] = useState(0);
+  const pageSize = 20;
+
+  // Modal states
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showViewModal, setShowViewModal] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showErrorDialog, setShowErrorDialog] = useState(false);
+  const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [dialogMessage, setDialogMessage] = useState("");
+  const [currentSponsor, setCurrentSponsor] = useState<Sponsor | null>(null);
+  const [currentDependent, setCurrentDependent] = useState<Dependent | null>(null);
   const [apiErrors, setApiErrors] = useState<Record<string, string>>({});
-  const [photo, setPhoto] = useState<File | null>(null);
-  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
-  const [isSearching, setIsSearching] = useState(false);
-  const [searchNumber, setSearchNumber] = useState("");
+  
+  // Form state exactly matching your Django model
   const [formData, setFormData] = useState({
+    // Basic sponsor info
+    sponsorId: "",
+    sponsorName: "",
+    sponsorPersonalNumber: "",
+    
+    // Patient fields
+    patient_type: "Dependent" as const,
+    dependent_type: "" as "Employee Dependent" | "Retiree Dependent" | "",
     sponsor_id: "",
-    type: "",
     title: "",
     surname: "",
     first_name: "",
     last_name: "",
     relationship: "",
+    marital_status: "",
     gender: "",
     date_of_birth: "",
     age: "",
-    marital_status: "",
     email: "",
     phone: "",
     address: "",
@@ -506,137 +180,89 @@ export default function DependentList() {
     local_government_area: "",
     blood_group: "",
     genotype: "",
-    next_of_kin: {
-      first_name: "",
-      last_name: "",
-      relationship: "",
-      address: "",
-      phone: "",
-    },
+    
+    // Next of Kin - matching Django field names
+    nok_first_name: "",
+    nok_last_name: "",
+    nok_relationship: "",
+    nok_address: "",
+    nok_phone: "",
+    
+    // For editing
     id: "",
   });
-  const rowsPerPage = 5;
 
-  useEffect(() => {
-    const fetchDependents = async () => {
-      setIsLoading(true);
-      try {
-        const baseURL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-        const params = new URLSearchParams({
-          page: String(currentPage),
-          page_size: String(rowsPerPage),
-          ...(search && { search }),
-          ...(typeFilter !== "All" && { type: typeFilter.toLowerCase() }),
-        });
-        const res = await fetch(`${baseURL}/api/dependents/?${params}`, {
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
-          },
-        });
-        if (!res.ok) {
-          const err: APIError = await res.json().catch(() => ({}));
-          throw new Error(err.detail || "Failed to fetch dependents");
-        }
-        const data = await res.json();
-        const mappedData = (data.results || data).map((s: any) => ({
-          id: s.id,
-          name: s.name,
-          type: s.type,
-          dependents: s.dependents.map((d: any) => ({
-            id: d.id,
-            sponsor_id: s.id,
-            type: d.type,
-            title: d.title || "",
-            surname: d.surname || "",
-            first_name: d.first_name || "",
-            last_name: d.last_name || "",
-            name: `${d.first_name || ""} ${d.last_name || ""}`.trim(),
-            relationship: d.relationship || "",
-            gender: d.gender || "",
-            date_of_birth: d.date_of_birth || "",
-            age: d.age || "",
-            marital_status: d.marital_status || "",
-            email: d.email || "",
-            phone: d.phone || "",
-            address: d.address || "",
-            residential_address: d.residential_address || "",
-            state_of_residence: d.state_of_residence || "",
-            permanent_address: d.permanent_address || "",
-            state_of_origin: d.state_of_origin || "",
-            local_government_area: d.local_government_area || "",
-            blood_group: d.blood_group || "",
-            genotype: d.genotype || "",
-            created_at: d.created_at || "",
-            next_of_kin: {
-              first_name: d.next_of_kin?.first_name || "",
-              last_name: d.next_of_kin?.last_name || "",
-              relationship: d.next_of_kin?.relationship || "",
-              address: d.next_of_kin?.address || "",
-              phone: d.next_of_kin?.phone || "",
-            },
-          })),
-        }));
-        setDependentsData(mappedData);
-        setTotalCount(data.count || mappedData.length);
-        setTotalPages(Math.ceil((data.count || mappedData.length) / rowsPerPage));
-      } catch (err: any) {
-        setDialogMessage(err.message || "Failed to load dependents. Please try again.");
-        setShowErrorDialog(true);
-        console.error(err);
-        toast({ title: "Error", description: String(err), variant: "destructive" });
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchDependents();
-  }, [currentPage, search, typeFilter, toast]);
+  const [photo, setPhoto] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
 
+  // Calculate age from DOB
   const calculateAge = (dob: string) => {
     if (!dob) return "";
-    const birthDate = new Date(dob);
+    const d = new Date(dob);
+    if (isNaN(d.getTime())) return "";
     const today = new Date();
-    if (birthDate > today) return "";
-    let age = today.getFullYear() - birthDate.getFullYear();
-    const monthDiff = today.getMonth() - birthDate.getMonth();
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
-      age--;
+    let age = today.getFullYear() - d.getFullYear();
+    const m = today.getMonth() - d.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < d.getDate())) age--;
+    return String(age);
+  };
+
+  const updateFormField = <K extends keyof typeof formData>(field: K, value: typeof formData[K]) => {
+    setFormData((prev) => {
+      const next = { ...prev, [field]: value };
+      if (field === "date_of_birth") {
+        next.age = calculateAge(String(value));
+      }
+      return next;
+    });
+  };
+
+  // Handle photo upload with proper validation
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files ? e.target.files[0] : null;
+    
+    if (file) {
+      // Validate file size (2MB limit)
+      if (file.size > 2 * 1024 * 1024) {
+        setDialogMessage("Photo size must be less than 2MB.");
+        setShowErrorDialog(true);
+        return;
+      }
+      
+      // Validate file type
+      if (!file.type.startsWith("image/")) {
+        setDialogMessage("Photo must be an image file.");
+        setShowErrorDialog(true);
+        return;
+      }
+      
+      setPhoto(file);
+      const previewUrl = URL.createObjectURL(file);
+      setPhotoPreview(previewUrl);
+    } else {
+      setPhoto(null);
+      setPhotoPreview(null);
     }
-    return String(Math.max(0, age));
   };
 
-  const updateField = (field: string, value: string) => {
-    setFormData((f) => ({
-      ...f,
-      [field]: value,
-      ...(field === "date_of_birth" && { age: calculateAge(value) }),
-    }));
-  };
-
-  const updateNok = (field: string, value: string) => {
-    setFormData((f) => ({
-      ...f,
-      next_of_kin: { ...f.next_of_kin, [field]: value },
-    }));
-  };
-
-  const getDependentLimit = (sponsorType: string) => {
-    return sponsorType === "Employee" ? 5 : 1;
-  };
-
-  const resetFormData = () => {
+  // Reset form and all states
+  const resetForm = () => {
     setFormData({
+      sponsorId: "",
+      sponsorName: "",
+      sponsorPersonalNumber: "",
+      patient_type: "Dependent",
+      dependent_type: "",
       sponsor_id: "",
-      type: "",
       title: "",
       surname: "",
       first_name: "",
       last_name: "",
       relationship: "",
+      marital_status: "",
       gender: "",
       date_of_birth: "",
       age: "",
-      marital_status: "",
       email: "",
       phone: "",
       address: "",
@@ -647,100 +273,238 @@ export default function DependentList() {
       local_government_area: "",
       blood_group: "",
       genotype: "",
-      next_of_kin: {
-        first_name: "",
-        last_name: "",
-        relationship: "",
-        address: "",
-        phone: "",
-      },
+      nok_first_name: "",
+      nok_last_name: "",
+      nok_relationship: "",
+      nok_address: "",
+      nok_phone: "",
       id: "",
     });
+    
+    // Clean up photo preview URL to prevent memory leaks
+    if (photoPreview && photoPreview.startsWith('blob:')) {
+      URL.revokeObjectURL(photoPreview);
+    }
+    
     setPhoto(null);
     setPhotoPreview(null);
     setApiErrors({});
   };
 
-  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files ? e.target.files[0] : null;
-    if (file && file.size > 2 * 1024 * 1024) {
-      toast({ title: "Error", description: "Photo size must be less than 2MB.", variant: "destructive" });
-      return;
-    }
-    if (file && !file.type.startsWith("image/")) {
-      toast({ title: "Error", description: "Photo must be an image file.", variant: "destructive" });
-      return;
-    }
-    setPhoto(file);
-    if (file) {
-      const previewUrl = URL.createObjectURL(file);
-      setPhotoPreview(previewUrl);
-    } else {
-      setPhotoPreview(null);
-    }
+  // Close all modals and reset states
+  const closeAllModals = () => {
+    setShowAddModal(false);
+    setShowEditModal(false);
+    setShowViewModal(false);
+    resetForm();
+    setCurrentDependent(null);
+    setCurrentSponsor(null);
   };
 
-  const handleSearch = async () => {
-    if (!searchNumber.trim()) {
-      setDialogMessage("Enter a personal number to search.");
-      setShowErrorDialog(true);
-      return;
+  // Get authorization header
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem('token');
+    return {
+      "Content-Type": "application/json",
+      ...(token && { "Authorization": `Bearer ${token}` }),
+    };
+  };
+
+  // Improved error handling for API calls
+  const handleApiError = (error: any, operation: string) => {
+    console.error(`${operation} error:`, error);
+    
+    let errorMessage = `Failed to ${operation.toLowerCase()}`;
+    if (error.message) {
+      errorMessage = error.message;
+    } else if (typeof error === 'string') {
+      errorMessage = error;
     }
-    setIsSearching(true);
+    
+    setError(errorMessage);
+    toast({ 
+      title: "Error", 
+      description: errorMessage, 
+      variant: "destructive" 
+    });
+  };
+
+  // Fetch sponsors and dependents from your Django API
+  const fetchSponsorsAndDependents = async (showLoadingState = true) => {
+    if (showLoadingState) {
+      setLoading(true);
+    }
+    setOperationLoading(prev => ({ ...prev, fetch: true }));
+    setError(null);
+    
     try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/patients/search/?q=${searchNumber}`,
-        {
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
-          },
-        }
-      );
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: "Search failed" }));
-        const errorMsg =
-          err.detail ||
-          Object.entries(err)
-            .map(([key, value]) => `${key}: ${Array.isArray(value) ? value[0] : value}`)
-            .join(", ") ||
-          "Search failed - check console.";
-        throw new Error(errorMsg);
+      const baseURL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      
+      // Fetch sponsors (Employees and Retirees) with pagination
+      const sponsorParams = new URLSearchParams({
+        patient_type: "Employee,Retiree",
+        page: currentPage.toString(),
+        page_size: pageSize.toString(),
+      });
+
+      const sponsorsRes = await fetch(`${baseURL}/api/patients/?${sponsorParams}`, {
+        headers: getAuthHeaders(),
+      });
+      
+      if (!sponsorsRes.ok) {
+        throw new Error(`Failed to fetch sponsors (${sponsorsRes.status})`);
       }
-      const data = await res.json();
-      setFormData((prev) => ({
-        ...prev,
-        sponsor_id: data.personal_number || data.id,
-      }));
-      toast({ title: "Success", description: "Sponsor found.", variant: "success" });
-    } catch (err: any) {
-      console.error("Search error:", err, err.stack);
-      setDialogMessage(err.message || "Sponsor not found or network error.");
-      setShowErrorDialog(true);
+      
+      const sponsorsData = await sponsorsRes.json();
+      const sponsors = sponsorsData.results || [];
+      setTotalSponsors(sponsorsData.count || sponsors.length);
+      
+      if (!Array.isArray(sponsors)) {
+        throw new Error("Invalid response format from sponsors API");
+      }
+      
+      // Fetch all dependents in one call for better performance
+      const dependentsRes = await fetch(`${baseURL}/api/patients/?patient_type=Dependent&page_size=1000`, {
+        headers: getAuthHeaders(),
+      });
+      
+      let allDependents: Dependent[] = [];
+      if (dependentsRes.ok) {
+        const dependentsData = await dependentsRes.json();
+        const dependentsList = dependentsData.results || [];
+        
+        allDependents = dependentsList.map((dep: any): Dependent => ({
+          id: dep.id,
+          patient_id: dep.patient_id || "",
+          personal_number: dep.personal_number || "",
+          name: `${dep.surname || ''} ${dep.first_name || ''}`.trim(),
+          surname: dep.surname || '',
+          first_name: dep.first_name || '',
+          last_name: dep.last_name || '',
+          title: dep.title || '',
+          relationship: dep.relationship || '',
+          age: dep.age || 0,
+          gender: dep.gender || '',
+          created_at: dep.created_at || '',
+          patient_type: "Dependent",
+          dependent_type: dep.dependent_type as "Employee Dependent" | "Retiree Dependent",
+          date_of_birth: dep.date_of_birth || '',
+          marital_status: dep.marital_status || '',
+          email: dep.email || '',
+          phone: dep.phone || '',
+          address: dep.address || '',
+          residential_address: dep.residential_address || '',
+          state_of_residence: dep.state_of_residence || '',
+          permanent_address: dep.permanent_address || '',
+          state_of_origin: dep.state_of_origin || '',
+          local_government_area: dep.local_government_area || '',
+          blood_group: dep.blood_group || '',
+          genotype: dep.genotype || '',
+          nok_first_name: dep.nok_first_name || '',
+          nok_last_name: dep.nok_last_name || '',
+          nok_relationship: dep.nok_relationship || '',
+          nok_address: dep.nok_address || '',
+          nok_phone: dep.nok_phone || '',
+          sponsor_id: dep.sponsor_id || '',
+          photo: dep.photo,
+          photo_url: dep.photo_url,
+        }));
+      }
+      
+      // Map sponsors with their dependents
+      const sponsorsWithDependents: Sponsor[] = sponsors.map((sponsor: any): Sponsor => {
+        const sponsorDependents = allDependents.filter(dep => dep.sponsor_id === sponsor.id);
+        
+        return {
+          id: sponsor.id,
+          patient_id: sponsor.patient_id || "",
+          personal_number: sponsor.personal_number || '',
+          surname: sponsor.surname || '',
+          first_name: sponsor.first_name || '',
+          last_name: sponsor.last_name || '',
+          patient_type: sponsor.patient_type,
+          title: sponsor.title || '',
+          gender: sponsor.gender || '',
+          age: sponsor.age || 0,
+          email: sponsor.email || '',
+          phone: sponsor.phone || '',
+          created_at: sponsor.created_at || '',
+          dependents: sponsorDependents,
+          maxDependents: sponsor.patient_type === "Employee" ? 5 : 1,
+          photo_url: sponsor.photo_url,
+        };
+      });
+      
+      setSponsorsData(sponsorsWithDependents);
+      
+    } catch (error: any) {
+      handleApiError(error, "fetch sponsors and dependents");
     } finally {
-      setIsSearching(false);
+      setLoading(false);
+      setOperationLoading(prev => ({ ...prev, fetch: false }));
     }
   };
 
-  const openAddModal = () => {
-    resetFormData();
-    setSearchNumber("");
-    setAddModalOpen(true);
+  // Fetch data on component mount and page change
+  useEffect(() => {
+    fetchSponsorsAndDependents();
+  }, [currentPage]);
+
+  // Open Add Modal with validation
+  const openAddModal = (sponsor: Sponsor) => {
+    if (!sponsor.id) {
+      setDialogMessage("Invalid sponsor data. Please refresh and try again.");
+      setShowErrorDialog(true);
+      return;
+    }
+    
+    if (sponsor.dependents.length >= sponsor.maxDependents) {
+      setDialogMessage(`This ${sponsor.patient_type.toLowerCase()} has reached the maximum number of dependents (${sponsor.maxDependents}).`);
+      setShowErrorDialog(true);
+      return;
+    }
+    
+    resetForm();
+    // Fixed the error by defining the parameter explicitly
+    setFormData(currentFormData => ({
+      ...currentFormData,
+      sponsorId: sponsor.id,
+      sponsorName: `${sponsor.surname} ${sponsor.first_name}`.trim(),
+      sponsorPersonalNumber: sponsor.personal_number,
+      sponsor_id: sponsor.id,
+      dependent_type: sponsor.patient_type === "Employee" ? "Employee Dependent" : "Retiree Dependent",
+    }));
+    setCurrentSponsor(sponsor);
+    setShowAddModal(true);
   };
 
-  const openEditModal = (sponsorId: string, dependent: Dependent) => {
+  // Open Edit Modal with proper field mapping
+  const openEditModal = (sponsor: Sponsor, dependent: Dependent) => {
+    if (!sponsor.id || !dependent.id) {
+      setDialogMessage("Invalid data. Please refresh and try again.");
+      setShowErrorDialog(true);
+      return;
+    }
+    
+    resetForm();
+    
+    // Map dependent data to form exactly matching Django model fields
     setFormData({
-      sponsor_id: sponsorId,
-      type: dependent.type,
+      sponsorId: sponsor.id,
+      sponsorName: `${sponsor.surname} ${sponsor.first_name}`.trim(),
+      sponsorPersonalNumber: sponsor.personal_number,
+      patient_type: "Dependent",
+      dependent_type: dependent.dependent_type,
+      sponsor_id: dependent.sponsor_id,
       title: dependent.title,
       surname: dependent.surname,
       first_name: dependent.first_name,
       last_name: dependent.last_name,
       relationship: dependent.relationship,
+      marital_status: dependent.marital_status,
       gender: dependent.gender,
       date_of_birth: dependent.date_of_birth,
-      age: dependent.age,
-      marital_status: dependent.marital_status,
+      age: String(dependent.age),
       email: dependent.email,
       phone: dependent.phone,
       address: dependent.address,
@@ -751,576 +515,1325 @@ export default function DependentList() {
       local_government_area: dependent.local_government_area,
       blood_group: dependent.blood_group,
       genotype: dependent.genotype,
-      next_of_kin: { ...dependent.next_of_kin },
+      nok_first_name: dependent.nok_first_name,
+      nok_last_name: dependent.nok_last_name,
+      nok_relationship: dependent.nok_relationship,
+      nok_address: dependent.nok_address,
+      nok_phone: dependent.nok_phone,
       id: dependent.id,
     });
-    setEditModalData(dependent);
-    setPhoto(null);
-    setPhotoPreview(null);
+    
+    // Set photo preview if available
+    if (dependent.photo_url) {
+      setPhotoPreview(dependent.photo_url);
+    }
+    
+    setCurrentSponsor(sponsor);
+    setCurrentDependent(dependent);
+    setShowEditModal(true);
   };
 
+  // Open View Modal
   const openViewModal = (dependent: Dependent) => {
-    setViewModalData(dependent);
-  };
-
-  const closeAddModal = () => {
-    setAddModalOpen(false);
-    resetFormData();
-  };
-
-  const closeEditModal = () => {
-    setEditModalData(null);
-    resetFormData();
-  };
-
-  const closeViewModal = () => {
-    setViewModalData(null);
-  };
-
-  const handleSaveClick = async () => {
-    const { sponsor_id, type, surname, first_name, relationship, gender, date_of_birth, email } = formData;
-    if (!sponsor_id || !type || !surname || !first_name || !relationship || !gender || !date_of_birth) {
-      toast({
-        title: "Error",
-        description: "Please fill all required fields (Sponsor Personal Number, Type, Surname, First Name, Relationship, Gender, Date of Birth).",
-        variant: "destructive",
-      });
+    if (!dependent.id) {
+      setDialogMessage("Invalid dependent data. Please refresh and try again.");
+      setShowErrorDialog(true);
       return;
     }
-    if (email && !/^\S+@\S+\.\S+$/.test(email)) {
-      toast({ title: "Error", description: "Please enter a valid email address.", variant: "destructive" });
+    
+    setCurrentDependent(dependent);
+    setShowViewModal(true);
+  };
+
+  // Enhanced validation matching Django model requirements
+  const validate = (): { ok: boolean; message?: string } => {
+    const requiredFields = {
+      surname: "Surname",
+      first_name: "First Name",
+      sponsor_id: "Sponsor",
+      dependent_type: "Dependent Type",
+      relationship: "Relationship",
+      gender: "Gender",
+      date_of_birth: "Date of Birth"
+    };
+    
+    // Check required fields
+    for (const [field, label] of Object.entries(requiredFields)) {
+      if (!formData[field as keyof typeof formData]?.toString().trim()) {
+        return { ok: false, message: `${label} is required.` };
+      }
+    }
+    
+    // Email validation
+    if (formData.email && !/^\S+@\S+\.\S+$/.test(formData.email)) {
+      return { ok: false, message: "Please enter a valid email address." };
+    }
+    
+    // Photo validation
+    if (photo && !photo.type.startsWith("image/")) {
+      return { ok: false, message: "Photo must be an image file." };
+    }
+    
+    // Date validation
+    if (formData.date_of_birth && new Date(formData.date_of_birth) > new Date()) {
+      return { ok: false, message: "Date of Birth cannot be in the future." };
+    }
+    
+    // Age validation
+    const age = parseInt(formData.age);
+    if (age < 0 || age > 150) {
+      return { ok: false, message: "Please enter a valid age." };
+    }
+    
+    return { ok: true };
+  };
+
+  // Save dependent with proper Django model mapping
+  const handleSave = async () => {
+    const validation = validate();
+    if (!validation.ok) {
+      setDialogMessage(validation.message || "Please check all required fields.");
+      setShowErrorDialog(true);
       return;
     }
-    const formDataToSend = new FormData();
-    formDataToSend.append("sponsor_id", sponsor_id);
-    formDataToSend.append("type", type);
-    formDataToSend.append("title", formData.title);
-    formDataToSend.append("surname", surname);
-    formDataToSend.append("first_name", first_name);
-    formDataToSend.append("last_name", formData.last_name);
-    formDataToSend.append("relationship", relationship);
-    formDataToSend.append("gender", gender);
-    formDataToSend.append("date_of_birth", date_of_birth);
-    formDataToSend.append("age", formData.age);
-    formDataToSend.append("marital_status", formData.marital_status);
-    formDataToSend.append("email", email);
-    formDataToSend.append("phone", formData.phone);
-    formDataToSend.append("address", formData.address);
-    formDataToSend.append("residential_address", formData.residential_address);
-    formDataToSend.append("state_of_residence", formData.state_of_residence);
-    formDataToSend.append("permanent_address", formData.permanent_address);
-    formDataToSend.append("state_of_origin", formData.state_of_origin);
-    formDataToSend.append("local_government_area", formData.local_government_area);
-    formDataToSend.append("blood_group", formData.blood_group);
-    formDataToSend.append("genotype", formData.genotype);
-    formDataToSend.append("next_of_kin.first_name", formData.next_of_kin.first_name);
-    formDataToSend.append("next_of_kin.last_name", formData.next_of_kin.last_name);
-    formDataToSend.append("next_of_kin.relationship", formData.next_of_kin.relationship);
-    formDataToSend.append("next_of_kin.address", formData.next_of_kin.address);
-    formDataToSend.append("next_of_kin.phone", formData.next_of_kin.phone);
-    if (photo) formDataToSend.append("photo", photo);
-    let endpoint = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/dependents/`;
-    const method = formData.id ? "PUT" : "POST";
-    if (formData.id) endpoint += `${formData.id}/`;
+
+    const isEdit = Boolean(formData.id);
+    setOperationLoading(prev => ({ ...prev, [isEdit ? 'edit' : 'add']: true }));
+    setApiErrors({});
+    
     try {
-      const res = await fetch(endpoint, {
-        method,
+      const baseURL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const formDataToSend = new FormData();
+      
+      // Map form data to Django model fields exactly
+      formDataToSend.append("patient_type", formData.patient_type);
+      formDataToSend.append("sponsor_id", formData.sponsor_id);
+      formDataToSend.append("dependent_type", formData.dependent_type);
+      formDataToSend.append("relationship", formData.relationship);
+      formDataToSend.append("title", formData.title);
+      formDataToSend.append("surname", formData.surname);
+      formDataToSend.append("first_name", formData.first_name);
+      formDataToSend.append("last_name", formData.last_name);
+      formDataToSend.append("marital_status", formData.marital_status);
+      formDataToSend.append("gender", formData.gender);
+      formDataToSend.append("date_of_birth", formData.date_of_birth);
+      formDataToSend.append("email", formData.email);
+      formDataToSend.append("phone", formData.phone);
+      formDataToSend.append("address", formData.address);
+      formDataToSend.append("residential_address", formData.residential_address);
+      formDataToSend.append("state_of_residence", formData.state_of_residence);
+      formDataToSend.append("permanent_address", formData.permanent_address);
+      formDataToSend.append("state_of_origin", formData.state_of_origin);
+      formDataToSend.append("local_government_area", formData.local_government_area);
+      formDataToSend.append("blood_group", formData.blood_group);
+      formDataToSend.append("genotype", formData.genotype);
+      formDataToSend.append("nok_first_name", formData.nok_first_name);
+      formDataToSend.append("nok_last_name", formData.nok_last_name);
+      formDataToSend.append("nok_relationship", formData.nok_relationship);
+      formDataToSend.append("nok_address", formData.nok_address);
+      formDataToSend.append("nok_phone", formData.nok_phone);
+      
+      if (photo) {
+        formDataToSend.append("photo", photo);
+      }
+
+      const method = isEdit ? "PUT" : "POST";
+      const url = isEdit ? `${baseURL}/api/patients/${formData.id}/` : `${baseURL}/api/patients/`;
+
+      const res = await fetch(url, {
+        method: method,
         headers: {
-          Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
+          "Authorization": `Bearer ${localStorage.getItem('token') || ''}`,
         },
         body: formDataToSend,
       });
+
       if (!res.ok) {
-        const err: APIError = await res.json().catch(() => ({}));
+        const err = await res.json().catch(() => ({}));
+        console.error("API Error:", err);
+        
+        // Parse field-specific errors
         const fieldErrors: Record<string, string> = {};
         Object.entries(err).forEach(([key, value]) => {
           fieldErrors[key] = Array.isArray(value) ? value[0] : String(value);
         });
         setApiErrors(fieldErrors);
-        setDialogMessage(err.detail || Object.values(fieldErrors).join(", ") || "Save failed");
-        setShowErrorDialog(true);
-        throw new Error(err.detail || "Save failed");
+        
+        const errorMsg = err.detail || 
+          Object.values(fieldErrors).join(", ") || 
+          `${isEdit ? 'Update' : 'Registration'} failed (Status: ${res.status})`;
+        
+        throw new Error(errorMsg);
       }
-      await res.json();
+
+      const data = await res.json();
+      const successMsg = `Dependent ${isEdit ? 'updated' : 'registered'} successfully! Patient ID: ${data.patient_id}`;
+      
+      setDialogMessage(successMsg);
+      setShowSuccessDialog(true);
+      
       toast({
         title: "Success",
-        description: formData.id ? "Dependent updated successfully." : "Dependent added successfully.",
-        variant: "success",
+        description: successMsg,
       });
-      const refreshRes = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/dependents/?page=${currentPage}&page_size=${rowsPerPage}`,
-        {
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
-          },
-        }
-      );
-      const newData = await refreshRes.json();
-      const mappedData = (newData.results || newData).map((s: any) => ({
-        id: s.id,
-        name: s.name,
-        type: s.type,
-        dependents: s.dependents.map((d: any) => ({
-          id: d.id,
-          sponsor_id: s.id,
-          type: d.type,
-          title: d.title || "",
-          surname: d.surname || "",
-          first_name: d.first_name || "",
-          last_name: d.last_name || "",
-          name: `${d.first_name || ""} ${d.last_name || ""}`.trim(),
-          relationship: d.relationship || "",
-          gender: d.gender || "",
-          date_of_birth: d.date_of_birth || "",
-          age: d.age || "",
-          marital_status: d.marital_status || "",
-          email: d.email || "",
-          phone: d.phone || "",
-          address: d.address || "",
-          residential_address: d.residential_address || "",
-          state_of_residence: d.state_of_residence || "",
-          permanent_address: d.permanent_address || "",
-          state_of_origin: d.state_of_origin || "",
-          local_government_area: d.local_government_area || "",
-          blood_group: d.blood_group || "",
-          genotype: d.genotype || "",
-          created_at: d.created_at || "",
-          next_of_kin: {
-            first_name: d.next_of_kin?.first_name || "",
-            last_name: d.next_of_kin?.last_name || "",
-            relationship: d.next_of_kin?.relationship || "",
-            address: d.next_of_kin?.address || "",
-            phone: d.next_of_kin?.phone || "",
-          },
-        })),
-      }));
-      setDependentsData(mappedData);
-      setTotalCount(newData.count || mappedData.length);
-      setTotalPages(Math.ceil((newData.count || mappedData.length) / rowsPerPage));
-      formData.id ? closeEditModal() : closeAddModal();
-    } catch (err: any) {
-      setDialogMessage(err.message || "Error saving dependent.");
-      setShowErrorDialog(true);
-      console.error(err, err.stack);
-      toast({ title: "Error", description: String(err), variant: "destructive" });
-    }
-  };
 
-  const handleDeleteClick = (sponsorId: string, dependentId: string, dependentName: string) => {
-    setDeleteConfirm({ sponsorId, dependentId, dependentName });
-  };
-
-  const confirmDelete = async () => {
-    if (!deleteConfirm) return;
-    try {
-      const endpoint = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/dependents/${deleteConfirm.dependentId}/`;
-      const res = await fetch(endpoint, {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
-        },
-      });
-      if (!res.ok) {
-        const err: APIError = await res.json().catch(() => ({}));
-        throw new Error(err.detail || "Delete failed");
-      }
-      toast({ title: "Success", description: "Dependent deleted successfully.", variant: "success" });
-      const refreshRes = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/dependents/?page=${currentPage}&page_size=${rowsPerPage}`,
-        {
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
-          },
-        }
-      );
-      const newData = await refreshRes.json();
-      const mappedData = (newData.results || newData).map((s: any) => ({
-        id: s.id,
-        name: s.name,
-        type: s.type,
-        dependents: s.dependents.map((d: any) => ({
-          id: d.id,
-          sponsor_id: s.id,
-          type: d.type,
-          title: d.title || "",
-          surname: d.surname || "",
-          first_name: d.first_name || "",
-          last_name: d.last_name || "",
-          name: `${d.first_name || ""} ${d.last_name || ""}`.trim(),
-          relationship: d.relationship || "",
-          gender: d.gender || "",
-          date_of_birth: d.date_of_birth || "",
-          age: d.age || "",
-          marital_status: d.marital_status || "",
-          email: d.email || "",
-          phone: d.phone || "",
-          address: d.address || "",
-          residential_address: d.residential_address || "",
-          state_of_residence: d.state_of_residence || "",
-          permanent_address: d.permanent_address || "",
-          state_of_origin: d.state_of_origin || "",
-          local_government_area: d.local_government_area || "",
-          blood_group: d.blood_group || "",
-          genotype: d.genotype || "",
-          created_at: d.created_at || "",
-          next_of_kin: {
-            first_name: d.next_of_kin?.first_name || "",
-            last_name: d.next_of_kin?.last_name || "",
-            relationship: d.next_of_kin?.relationship || "",
-            address: d.next_of_kin?.address || "",
-            phone: d.next_of_kin?.phone || "",
-          },
-        })),
-      }));
-      setDependentsData(mappedData);
-      setTotalCount(newData.count || mappedData.length);
-      setTotalPages(Math.ceil((newData.count || mappedData.length) / rowsPerPage));
-    } catch (err: any) {
-      setDialogMessage(err.message || "Error deleting dependent.");
+      closeAllModals();
+      
+      // Refresh data without showing loading state
+      await fetchSponsorsAndDependents(false);
+      
+    } catch (error: any) {
+      handleApiError(error, isEdit ? "update dependent" : "register dependent");
+      setDialogMessage(error.message || `Failed to ${isEdit ? 'update' : 'register'} dependent.`);
       setShowErrorDialog(true);
-      console.error(err);
-      toast({ title: "Error", description: String(err), variant: "destructive" });
     } finally {
-      setDeleteConfirm(null);
+      setOperationLoading(prev => ({ 
+        ...prev, 
+        [isEdit ? 'edit' : 'add']: false 
+      }));
     }
   };
 
-  const filteredSponsors = useMemo(() => {
-    return dependentsData.filter((sponsor) => {
-      const matchesSearch =
-        sponsor.name.toLowerCase().includes(search.toLowerCase()) ||
-        sponsor.dependents.some((dep: Dependent) =>
-          dep.name.toLowerCase().includes(search.toLowerCase())
-        );
-      const matchesType =
-        typeFilter === "All" ||
-        sponsor.type.toLowerCase() === typeFilter.toLowerCase();
-      return matchesSearch && matchesType;
-    });
-  }, [dependentsData, search, typeFilter]);
+  // Delete dependent
+  const handleDelete = async () => {
+    if (!currentSponsor || !currentDependent) {
+      setDialogMessage("Invalid selection. Please try again.");
+      setShowErrorDialog(true);
+      return;
+    }
 
-  const paginatedSponsors = filteredSponsors.slice(
-    (currentPage - 1) * rowsPerPage,
-    currentPage * rowsPerPage
-  );
+    setOperationLoading(prev => ({ ...prev, delete: true }));
+    
+    try {
+      const baseURL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const res = await fetch(`${baseURL}/api/patients/${currentDependent.id}/`, {
+        method: "DELETE",
+        headers: getAuthHeaders(),
+      });
 
-  if (isLoading) {
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `Delete failed (Status: ${res.status})`);
+      }
+
+      toast({ 
+        title: "Success", 
+        description: `${currentDependent.name} has been deleted successfully.` 
+      });
+      
+      setShowDeleteDialog(false);
+      setCurrentDependent(null);
+      setCurrentSponsor(null);
+      
+      // Refresh data
+      await fetchSponsorsAndDependents(false);
+      
+    } catch (error: any) {
+      handleApiError(error, "delete dependent");
+      setDialogMessage(error.message || "Failed to delete dependent.");
+      setShowErrorDialog(true);
+    } finally {
+      setOperationLoading(prev => ({ ...prev, delete: false }));
+    }
+  };
+
+  // Filter sponsors with improved search
+  const filteredSponsors = sponsorsData.filter(sponsor => {
+    const searchLower = search.toLowerCase();
+    const sponsorName = `${sponsor.surname} ${sponsor.first_name}`.toLowerCase();
+    const personalNumber = sponsor.personal_number.toLowerCase();
+    
     return (
-      <Card className="max-w-6xl mx-auto shadow-xl">
-        <CardContent className="flex justify-center items-center h-screen">
-          <Loader />
-          <span className="ml-2">Loading...</span>
-        </CardContent>
-      </Card>
+      sponsorName.includes(searchLower) ||
+      personalNumber.includes(searchLower) ||
+      sponsor.dependents.some(dep => 
+        dep.name.toLowerCase().includes(searchLower) ||
+        dep.patient_id.toLowerCase().includes(searchLower) ||
+        dep.relationship.toLowerCase().includes(searchLower)
+      )
     );
-  }
+  });
+
+  const totalPages = Math.ceil(totalSponsors / pageSize);
 
   return (
-    <Card className="max-w-6xl mx-auto shadow-xl overflow-y-auto max-h-screen">
-      <CardHeader className="rounded-t-lg">
-        <div className="flex justify-between items-center">
-          <CardTitle className="text-3xl font-bold flex items-center gap-2">
-            <Calendar className="h-8 w-8" />
-            Manage Dependents
-          </CardTitle>
+    <Card className="max-w-7xl mx-auto shadow-xl overflow-y-auto max-h-screen">
+      <CardHeader className="rounded-t-lg bg-gradient-to-r from-blue-50 to-indigo-50">
+        <CardTitle className="text-3xl font-bold flex items-center gap-2 text-gray-800">
+          <User className="h-8 w-8 text-blue-600" />
+          Manage Dependents
+        </CardTitle>
+        <p className="text-gray-600 mt-2">
+          Manage dependents for employees (max 5) and retirees (max 1)
+        </p>
+      </CardHeader>
+      <CardContent className="p-6">
+        {/* Error Alert */}
+        {error && (
+          <Alert variant="destructive" className="mb-6">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription className="flex justify-between items-center">
+              <span>{error}</span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setError(null);
+                  fetchSponsorsAndDependents();
+                }}
+              >
+                <RefreshCw className="h-4 w-4 mr-1" />
+                Retry
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* Search and Controls */}
+        <div className="flex flex-col md:flex-row gap-4 items-start md:items-center mb-6">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Input
+              placeholder="Search sponsors or dependents..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-10"
+            />
+          </div>
           <div className="flex gap-2">
-            <Link href="/medical-records/dashboard">
-              <Button variant="outline" className="flex items-center gap-2">
-                <Calendar className="h-4 w-4" />
-                Dashboard
-              </Button>
-            </Link>
-            <Link href="/medical-records/register-patient">
-              <Button variant="outline" className="flex items-center gap-2">
-                <Plus className="h-4 w-4" />
-                Register Patient
-              </Button>
-            </Link>
             <Button
-              onClick={openAddModal}
-              className="bg-gray-900 hover:bg-gray-900 text-white flex items-center gap-2"
+              variant="outline"
+              onClick={() => fetchSponsorsAndDependents()}
+              disabled={operationLoading.fetch}
             >
-              <Plus className="h-4 w-4" />
-              Add Dependent
+              <RefreshCw className={`h-4 w-4 mr-1 ${operationLoading.fetch ? 'animate-spin' : ''}`} />
+              Refresh
             </Button>
+            <Badge variant="secondary" className="px-3 py-1">
+              {totalSponsors} sponsors total
+            </Badge>
           </div>
         </div>
-      </CardHeader>
-      <CardContent className="p-6 space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg font-semibold">Search & Filter</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label>Search by Sponsor or Dependent Name</Label>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                  <Input
-                    className="pl-10"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Search by name"
-                  />
-                </div>
-              </div>
-              <div>
-                <Label>Filter by Sponsor Type</Label>
-                <Select value={typeFilter} onValueChange={setTypeFilter}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="All">All</SelectItem>
-                    <SelectItem value="Employee">Employee</SelectItem>
-                    <SelectItem value="Retiree">Retiree</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+
+        {/* Loading state */}
+        {loading && (
+          <div className="flex justify-center items-center py-16">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+              <p className="mt-4 text-gray-600">Loading sponsors and dependents...</p>
             </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg font-semibold">Dependents</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {filteredSponsors.length === 0 ? (
-              <p className="text-center text-gray-500">No dependents found.</p>
-            ) : (
-              <div className="space-y-4">
-                {paginatedSponsors.map((sponsor) => (
-                  <div key={sponsor.id} className="border rounded-lg">
-                    <div className="flex justify-between items-center p-4 bg-gray-50">
-                      <div>
-                        <h3 className="font-semibold">{sponsor.name} ({sponsor.type})</h3>
-                        <p className="text-sm text-gray-500">
-                          Dependents: {sponsor.dependents.length}/{getDependentLimit(sponsor.type)}
-                        </p>
-                      </div>
-                      {sponsor.dependents.length < getDependentLimit(sponsor.type) && (
-                        <Button
-                          onClick={() => openAddModal()}
-                          className="bg-gray-900 hover:bg-gray-900 text-white flex items-center gap-2"
-                        >
-                          <Plus className="h-4 w-4" />
-                          Add Dependent
-                        </Button>
-                      )}
+          </div>
+        )}
+
+        {/* Main Content */}
+        {!loading && (
+          <>
+            {/* Summary Stats */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+              <Card>
+                <CardContent className="p-4">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-blue-600">
+                      {sponsorsData.reduce((acc, sponsor) => acc + sponsor.dependents.length, 0)}
                     </div>
-                    {sponsor.dependents.length > 0 ? (
-                      <table className="w-full">
-                        <thead>
-                          <tr className="bg-gray-100">
-                            <th className="p-2 text-left">Name</th>
-                            <th className="p-2 text-left">Type</th>
-                            <th className="p-2 text-left">Relationship</th>
-                            <th className="p-2 text-left">Gender</th>
-                            <th className="p-2 text-left">Age</th>
-                            <th className="p-2 text-left">Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {sponsor.dependents.map((dep) => (
-                            <tr key={dep.id} className="border-t">
-                              <td className="p-2">{dep.name}</td>
-                              <td className="p-2">{dep.type}</td>
-                              <td className="p-2">{dep.relationship}</td>
-                              <td className="p-2">{dep.gender}</td>
-                              <td className="p-2">{dep.age}</td>
-                              <td className="p-2 flex gap-2">
-                                <TooltipProvider>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => openViewModal(dep)}
-                                      >
-                                        <Eye className="h-4 w-4" />
-                                      </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>View</TooltipContent>
-                                  </Tooltip>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => openEditModal(sponsor.id, dep)}
-                                      >
-                                        <Pencil className="h-4 w-4" />
-                                      </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>Edit</TooltipContent>
-                                  </Tooltip>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => handleDeleteClick(sponsor.id, dep.id, dep.name)}
-                                      >
-                                        <Trash2 className="h-4 w-4" />
-                                      </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>Delete</TooltipContent>
-                                  </Tooltip>
-                                </TooltipProvider>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    ) : (
-                      <p className="p-4 text-center text-gray-500">No dependents for this sponsor.</p>
-                    )}
+                    <div className="text-sm text-gray-500">Total Dependents</div>
                   </div>
-                ))}
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-4">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-green-600">
+                      {sponsorsData.filter(s => s.dependents.length < s.maxDependents).length}
+                    </div>
+                    <div className="text-sm text-gray-500">Can Add More</div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-4">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-orange-600">
+                      {sponsorsData.filter(s => s.dependents.length >= s.maxDependents).length}
+                    </div>
+                    <div className="text-sm text-gray-500">At Limit</div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Sponsors List */}
+            <div className="space-y-6">
+              {filteredSponsors.map((sponsor) => (
+                <Card key={sponsor.id} className="border-2 hover:border-blue-200 transition-colors">
+                  <CardHeader className="bg-gradient-to-r from-gray-50 to-blue-50">
+                    <div className="flex justify-between items-start">
+                      <div className="flex items-center gap-4">
+                        <div className="w-16 h-16 rounded-full overflow-hidden bg-gray-200 flex items-center justify-center border-2 border-white shadow-md">
+                          {sponsor.photo_url ? (
+                            <img 
+                              src={sponsor.photo_url} 
+                              alt={`${sponsor.surname} ${sponsor.first_name}`} 
+                              className="w-full h-full object-cover" 
+                            />
+                          ) : (
+                            <User className="h-8 w-8 text-gray-400" />
+                          )}
+                        </div>
+                        <div>
+                          <CardTitle className="text-xl text-gray-800">
+                            {sponsor.title} {sponsor.surname} {sponsor.first_name}
+                          </CardTitle>
+                          <div className="flex items-center gap-4 mt-2">
+                            <Badge variant="outline" className="text-xs font-medium">
+                              {sponsor.patient_type}
+                            </Badge>
+                            <span className="text-sm text-gray-600">
+                              <strong>ID:</strong> {sponsor.personal_number}
+                            </span>
+                            <span className="text-sm text-gray-600">
+                              <strong>Patient ID:</strong> {sponsor.patient_id}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-lg font-semibold mb-1">
+                          <span className="text-blue-600">{sponsor.dependents.length}</span>
+                          <span className="text-gray-400">/{sponsor.maxDependents}</span>
+                        </div>
+                        {sponsor.dependents.length < sponsor.maxDependents ? (
+                          <Badge className="bg-green-100 text-green-800 border-green-200">
+                            <Plus className="h-3 w-3 mr-1" />
+                            Can add {sponsor.maxDependents - sponsor.dependents.length} more
+                          </Badge>
+                        ) : (
+                          <Badge className="bg-red-100 text-red-800 border-red-200">
+                            Limit reached
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="pt-6">
+                    {sponsor.dependents.length > 0 ? (
+                      <div className="space-y-4">
+                        <div className="overflow-x-auto">
+                          <table className="w-full border-collapse">
+                            <thead>
+                              <tr className="border-b-2 border-gray-100">
+                                <th className="text-left p-3 font-semibold text-gray-700 bg-gray-50">Photo</th>
+                                <th className="text-left p-3 font-semibold text-gray-700 bg-gray-50">Patient ID</th>
+                                <th className="text-left p-3 font-semibold text-gray-700 bg-gray-50">Name</th>
+                                <th className="text-left p-3 font-semibold text-gray-700 bg-gray-50">Relationship</th>
+                                <th className="text-left p-3 font-semibold text-gray-700 bg-gray-50">Age/Gender</th>
+                                <th className="text-left p-3 font-semibold text-gray-700 bg-gray-50">Type</th>
+                                <th className="text-left p-3 font-semibold text-gray-700 bg-gray-50">Registration</th>
+                                <th className="text-left p-3 font-semibold text-gray-700 bg-gray-50">Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {sponsor.dependents.map((dependent, index) => (
+                                <tr 
+                                  key={dependent.id} 
+                                  className={`border-b hover:bg-blue-50 transition-colors ${
+                                    index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
+                                  }`}
+                                >
+                                  <td className="p-3">
+                                    <div className="w-10 h-10 rounded-full overflow-hidden bg-gray-200 flex items-center justify-center">
+                                      {dependent.photo_url ? (
+                                        <img 
+                                          src={dependent.photo_url} 
+                                          alt={dependent.name} 
+                                          className="w-full h-full object-cover" 
+                                        />
+                                      ) : (
+                                        <User className="h-5 w-5 text-gray-400" />
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td className="p-3">
+                                    <div className="font-mono text-xs bg-gray-100 px-2 py-1 rounded">
+                                      {dependent.patient_id}
+                                    </div>
+                                  </td>
+                                  <td className="p-3">
+                                    <div className="font-medium text-gray-800">
+                                      {dependent.title} {dependent.name}
+                                    </div>
+                                  </td>
+                                  <td className="p-3">
+                                    <Badge variant="secondary" className="text-xs">
+                                      {dependent.relationship}
+                                    </Badge>
+                                  </td>
+                                  <td className="p-3">
+                                    <div className="text-sm">
+                                      <div>{dependent.age} years</div>
+                                      <div className="text-gray-500">{dependent.gender}</div>
+                                    </div>
+                                  </td>
+                                  <td className="p-3">
+                                    <Badge variant="outline" className="text-xs">
+                                      {dependent.dependent_type.replace(' Dependent', '')}
+                                    </Badge>
+                                  </td>
+                                  <td className="p-3 text-sm text-gray-600">
+                                    {dependent.created_at ? new Date(dependent.created_at).toLocaleDateString() : 'N/A'}
+                                  </td>
+                                  <td className="p-3">
+                                    <div className="flex gap-1">
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => openViewModal(dependent)}
+                                        className="h-8 w-8 p-0"
+                                        disabled={operationLoading.fetch}
+                                        title="View Details"
+                                      >
+                                        <Eye className="w-3 h-3" />
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => openEditModal(sponsor, dependent)}
+                                        className="h-8 w-8 p-0"
+                                        disabled={operationLoading.edit}
+                                        title="Edit"
+                                      >
+                                        <Pencil className="w-3 h-3" />
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => {
+                                          setCurrentSponsor(sponsor);
+                                          setCurrentDependent(dependent);
+                                          setShowDeleteDialog(true);
+                                        }}
+                                        className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                        disabled={operationLoading.delete}
+                                        title="Delete"
+                                      >
+                                        <Trash2 className="w-3 h-3" />
+                                      </Button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-center py-12 bg-gray-50 rounded-lg">
+                        <User className="mx-auto h-16 w-16 text-gray-300 mb-4" />
+                        <p className="text-gray-500 text-lg font-medium">No dependents registered</p>
+                        <p className="text-gray-400 text-sm mt-2">This sponsor has no dependents yet</p>
+                      </div>
+                    )}
+
+                    {/* Add Dependent Button */}
+                    {sponsor.dependents.length < sponsor.maxDependents && (
+                      <div className="mt-6 pt-4 border-t">
+                        <Button
+                          variant="default"
+                          onClick={() => openAddModal(sponsor)}
+                          className="w-full bg-gray-900 hover:bg-gray-900 text-white font-bold py-3"
+                          disabled={operationLoading.add}
+                        >
+                          <Plus className="mr-2 h-4 w-4" />
+                          {operationLoading.add ? "Adding..." : `Add Dependent for ${sponsor.first_name}`}
+                        </Button>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
+            {/* No Results */}
+            {filteredSponsors.length === 0 && (
+              <div className="text-center py-16">
+                <Search className="mx-auto h-20 w-20 text-gray-300 mb-6" />
+                <p className="text-gray-500 text-xl font-medium">No sponsors found</p>
+                <p className="text-gray-400 mt-2">
+                  {search ? "Try adjusting your search criteria" : "No sponsors available"}
+                </p>
+                {search && (
+                  <Button
+                    variant="outline"
+                    onClick={() => setSearch("")}
+                    className="mt-4"
+                  >
+                    Clear Search
+                  </Button>
+                )}
               </div>
             )}
-            <div className="flex justify-between items-center mt-4">
-              <div>
-                Showing {(currentPage - 1) * rowsPerPage + 1} to{" "}
-                {Math.min(currentPage * rowsPerPage, totalCount)} of {totalCount} dependents
-              </div>
-              <div className="flex gap-2">
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="flex justify-center items-center gap-2 mt-8">
                 <Button
                   variant="outline"
-                  disabled={currentPage === 1}
-                  onClick={() => setCurrentPage((p) => p - 1)}
+                  size="sm"
+                  onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                  disabled={currentPage === 1 || loading}
                 >
                   Previous
                 </Button>
+                <div className="flex gap-1">
+                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                    let pageNum;
+                    if (totalPages <= 5) {
+                      pageNum = i + 1;
+                    } else if (currentPage <= 3) {
+                      pageNum = i + 1;
+                    } else if (currentPage >= totalPages - 2) {
+                      pageNum = totalPages - 4 + i;
+                    } else {
+                      pageNum = currentPage - 2 + i;
+                    }
+                    return (
+                      <Button
+                        key={pageNum}
+                        variant={pageNum === currentPage ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setCurrentPage(pageNum)}
+                        disabled={loading}
+                        className={pageNum === currentPage ? "bg-blue-600 text-white" : ""}
+                      >
+                        {pageNum}
+                      </Button>
+                    );
+                  })}
+                </div>
                 <Button
                   variant="outline"
-                  disabled={currentPage === totalPages}
-                  onClick={() => setCurrentPage((p) => p + 1)}
+                  size="sm"
+                  onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                  disabled={currentPage === totalPages || loading}
                 >
                   Next
                 </Button>
               </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Dialog open={addModalOpen} onOpenChange={closeAddModal}>
-          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle className="text-xl font-semibold">Add Dependent</DialogTitle>
-            </DialogHeader>
-            <div className="p-4">
-              <Label>Search Sponsor by Personal Number</Label>
-              <div className="flex gap-2">
-                <Input
-                  value={searchNumber}
-                  onChange={(e) => setSearchNumber(e.target.value)}
-                  placeholder="Enter sponsor personal number"
-                />
-                <Button
-                  type="button"
-                  onClick={handleSearch}
-                  disabled={isSearching}
-                  className="bg-gray-900 hover:bg-gray-900 text-white"
-                >
-                  {isSearching ? "Searching..." : "Search"}
-                </Button>
-              </div>
-            </div>
-            {formData.sponsor_id && (
-              <>
-                <DependentFormFields
-                  formData={formData}
-                  updateField={updateField}
-                  updateNok={updateNok}
-                  handlePhotoChange={handlePhotoChange}
-                  photoPreview={photoPreview}
-                  apiErrors={apiErrors}
-                />
-                <DialogFooter>
-                  <Button variant="outline" onClick={closeAddModal}>
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={handleSaveClick}
-                    className="bg-gray-900 hover:bg-gray-900 text-white"
-                  >
-                    Save Dependent
-                  </Button>
-                </DialogFooter>
-              </>
             )}
-          </DialogContent>
-        </Dialog>
-        <Dialog open={!!editModalData} onOpenChange={closeEditModal}>
-          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          </>
+        )}
+
+        {/* Add/Edit Modal */}
+        <Dialog 
+          open={showAddModal || showEditModal} 
+          onOpenChange={(open) => {
+            if (!open && !operationLoading.add && !operationLoading.edit) {
+              closeAllModals();
+            }
+          }}
+        >
+          <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle className="text-xl font-semibold">Edit Dependent</DialogTitle>
+              <DialogTitle className="text-2xl flex items-center gap-2">
+                <User className="h-6 w-6 text-blue-600" />
+                {showAddModal ? "Register New Dependent" : "Edit Dependent"}
+              </DialogTitle>
             </DialogHeader>
-            <DependentFormFields
-              formData={formData}
-              updateField={updateField}
-              updateNok={updateNok}
-              handlePhotoChange={handlePhotoChange}
-              photoPreview={photoPreview}
-              apiErrors={apiErrors}
-            />
-            <DialogFooter>
-              <Button variant="outline" onClick={closeEditModal}>
+
+            <form onSubmit={(e) => { e.preventDefault(); handleSave(); }} className="space-y-8">
+              {/* Sponsor Information */}
+              <Card className="border-blue-200 bg-blue-50/30">
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2 text-blue-700">
+                    <User className="h-5 w-5" />
+                    Sponsor Information
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <Label>Sponsor Name</Label>
+                      <Input value={formData.sponsorName} disabled className="bg-white/70" />
+                    </div>
+                    <div>
+                      <Label>Personal Number</Label>
+                      <Input value={formData.sponsorPersonalNumber} disabled className="bg-white/70" />
+                    </div>
+                    <div>
+                      <Label>Dependent Type</Label>
+                      <Input value={formData.dependent_type} disabled className="bg-white/70" />
+                      {apiErrors.dependent_type && (
+                        <p className="text-red-500 text-sm mt-1">{apiErrors.dependent_type}</p>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <Separator />
+                  
+                  <div>
+                    <Label>Relationship to Sponsor *</Label>
+                    <Select
+                      value={formData.relationship}
+                      onValueChange={(v: string) => updateFormField("relationship", v)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select relationship" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {nokRelationships.map((r) => (
+                          <SelectItem key={r} value={r}>{r}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {apiErrors.relationship && (
+                      <p className="text-red-500 text-sm mt-1">{apiErrors.relationship}</p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Personal Details */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <User className="h-5 w-5 text-green-600" />
+                    Personal Details
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div className="md:row-span-2 flex flex-col items-center justify-center">
+                      <div className="w-32 h-32 rounded-full overflow-hidden bg-gray-200 flex items-center justify-center mb-3 border-4 border-gray-100 shadow-md">
+                        {photoPreview ? (
+                          <img src={photoPreview} alt="Dependent preview" className="w-full h-full object-cover" />
+                        ) : (
+                          <User className="h-16 w-16 text-gray-400" />
+                        )}
+                      </div>
+                      <Label htmlFor="photo-upload" className="cursor-pointer">
+                        <Input
+                          id="photo-upload"
+                          type="file"
+                          accept="image/*"
+                          onChange={handlePhotoChange}
+                          className="hidden"
+                        />
+                        <Button variant="outline" size="sm" asChild>
+                          <label htmlFor="photo-upload">
+                            <Plus className="h-4 w-4 mr-1" />
+                            Upload Photo
+                          </label>
+                        </Button>
+                      </Label>
+                    </div>
+
+                    <div>
+                      <Label>Title</Label>
+                      <Select
+                        value={formData.title}
+                        onValueChange={(v: string) => updateFormField("title", v)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select title" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {nameTitles.map((t) => (
+                            <SelectItem key={t} value={t}>{t}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {apiErrors.title && <p className="text-red-500 text-sm mt-1">{apiErrors.title}</p>}
+                    </div>
+
+                    <div>
+                      <Label>Surname *</Label>
+                      <Input
+                        value={formData.surname}
+                        onChange={(e) => updateFormField("surname", e.target.value)}
+                        placeholder="Surname"
+                      />
+                      {apiErrors.surname && <p className="text-red-500 text-sm mt-1">{apiErrors.surname}</p>}
+                    </div>
+
+                    <div>
+                      <Label>First Name *</Label>
+                      <Input
+                        value={formData.first_name}
+                        onChange={(e) => updateFormField("first_name", e.target.value)}
+                        placeholder="First name"
+                      />
+                      {apiErrors.first_name && <p className="text-red-500 text-sm mt-1">{apiErrors.first_name}</p>}
+                    </div>
+
+                    <div>
+                      <Label>Last Name</Label>
+                      <Input
+                        value={formData.last_name}
+                        onChange={(e) => updateFormField("last_name", e.target.value)}
+                        placeholder="Last name"
+                      />
+                      {apiErrors.last_name && <p className="text-red-500 text-sm mt-1">{apiErrors.last_name}</p>}
+                    </div>
+
+                    <div>
+                      <Label>Gender *</Label>
+                      <Select
+                        value={formData.gender}
+                        onValueChange={(v: string) => updateFormField("gender", v)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select gender" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {genders.map((g) => (
+                            <SelectItem key={g} value={g}>{g}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {apiErrors.gender && <p className="text-red-500 text-sm mt-1">{apiErrors.gender}</p>}
+                    </div>
+
+                    <div>
+                      <Label>Date of Birth *</Label>
+                      <Input
+                        type="date"
+                        value={formData.date_of_birth}
+                        onChange={(e) => updateFormField("date_of_birth", e.target.value)}
+                      />
+                      {apiErrors.date_of_birth && (
+                        <p className="text-red-500 text-sm mt-1">{apiErrors.date_of_birth}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <Label>Age</Label>
+                      <Input value={formData.age} readOnly className="bg-gray-50" />
+                    </div>
+
+                    <div>
+                      <Label>Marital Status</Label>
+                      <Select
+                        value={formData.marital_status}
+                        onValueChange={(v: string) => updateFormField("marital_status", v)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {maritalStatuses.map((m) => (
+                            <SelectItem key={m} value={m}>{m}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {apiErrors.marital_status && (
+                        <p className="text-red-500 text-sm mt-1">{apiErrors.marital_status}</p>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Contact Information */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Search className="h-5 w-5 text-purple-600" />
+                    Contact Information
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <Label>Email</Label>
+                      <Input
+                        type="email"
+                        value={formData.email}
+                        onChange={(e) => updateFormField("email", e.target.value)}
+                        placeholder="email@example.com"
+                      />
+                      {apiErrors.email && <p className="text-red-500 text-sm mt-1">{apiErrors.email}</p>}
+                    </div>
+                    <div>
+                      <Label>Phone</Label>
+                      <Input
+                        value={formData.phone}
+                        onChange={(e) => updateFormField("phone", e.target.value)}
+                        placeholder="Phone number"
+                      />
+                      {apiErrors.phone && <p className="text-red-500 text-sm mt-1">{apiErrors.phone}</p>}
+                    </div>
+                    <div>
+                      <Label>State of Residence</Label>
+                      <Select
+                        value={formData.state_of_residence}
+                        onValueChange={(v: string) => updateFormField("state_of_residence", v)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select state" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {nigerianStates.map((s) => (
+                            <SelectItem key={s} value={s}>{s}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label>Residential Address</Label>
+                    <Input
+                      value={formData.residential_address}
+                      onChange={(e) => updateFormField("residential_address", e.target.value)}
+                      placeholder="Current residential address"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label>State of Origin</Label>
+                      <Select
+                        value={formData.state_of_origin}
+                        onValueChange={(v: string) => updateFormField("state_of_origin", v)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select state" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {nigerianStates.map((s) => (
+                            <SelectItem key={s} value={s}>{s}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>Local Government Area</Label>
+                      <Input
+                        value={formData.local_government_area}
+                        onChange={(e) => updateFormField("local_government_area", e.target.value)}
+                        placeholder="LGA"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label>Permanent Address</Label>
+                    <Input
+                      value={formData.permanent_address}
+                      onChange={(e) => updateFormField("permanent_address", e.target.value)}
+                      placeholder="Permanent home address"
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Medical Details */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <AlertCircle className="h-5 w-5 text-red-600" />
+                    Medical Details
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label>Blood Group</Label>
+                      <Select
+                        value={formData.blood_group}
+                        onValueChange={(v: string) => updateFormField("blood_group", v)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select blood group" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {bloodGroups.map((b) => (
+                            <SelectItem key={b} value={b}>{b}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>Genotype</Label>
+                      <Select
+                        value={formData.genotype}
+                        onValueChange={(v: string) => updateFormField("genotype", v)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select genotype" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {genotypes.map((g) => (
+                            <SelectItem key={g} value={g}>{g}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Next of Kin */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Next of Kin Information</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <Label>First Name</Label>
+                      <Input
+                        value={formData.nok_first_name}
+                        onChange={(e) => updateFormField("nok_first_name", e.target.value)}
+                        placeholder="First name"
+                      />
+                    </div>
+                    <div>
+                      <Label>Last Name</Label>
+                      <Input
+                        value={formData.nok_last_name}
+                        onChange={(e) => updateFormField("nok_last_name", e.target.value)}
+                        placeholder="Last name"
+                      />
+                    </div>
+                    <div>
+                      <Label>Relationship</Label>
+                      <Select
+                        value={formData.nok_relationship}
+                        onValueChange={(v: string) => updateFormField("nok_relationship", v)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select relationship" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {nokRelationships.map((r) => (
+                            <SelectItem key={r} value={r}>{r}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label>Address</Label>
+                      <Input
+                        value={formData.nok_address}
+                        onChange={(e) => updateFormField("nok_address", e.target.value)}
+                        placeholder="Address"
+                      />
+                    </div>
+                    <div>
+                      <Label>Phone</Label>
+                      <Input
+                        value={formData.nok_phone}
+                        onChange={(e) => updateFormField("nok_phone", e.target.value)}
+                        placeholder="Phone number"
+                      />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </form>
+
+            <DialogFooter className="flex justify-between pt-6 border-t">
+              <Button
+                variant="outline"
+                onClick={closeAllModals}
+                disabled={operationLoading.add || operationLoading.edit}
+              >
                 Cancel
               </Button>
               <Button
-                onClick={handleSaveClick}
-                className="bg-gray-900 hover:bg-gray-900 text-white"
+                onClick={handleSave}
+                disabled={operationLoading.add || operationLoading.edit}
+                className="bg-blue-600 hover:bg-blue-700 text-white"
               >
-                Save Changes
+                {operationLoading.add || operationLoading.edit ? (
+                  <div className="flex items-center">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Saving...
+                  </div>
+                ) : (
+                  showAddModal ? "Register Dependent" : "Update Dependent"
+                )}
               </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
-        <Dialog open={!!viewModalData} onOpenChange={closeViewModal}>
-          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+
+        {/* View Dependent Modal */}
+        <Dialog open={showViewModal} onOpenChange={setShowViewModal}>
+          <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle className="text-xl font-semibold">Dependent Details</DialogTitle>
+              <DialogTitle className="text-2xl flex items-center gap-2">
+                <User className="h-6 w-6 text-blue-600" />
+                Dependent Overview
+              </DialogTitle>
             </DialogHeader>
-            {viewModalData && (
-              <PatientOverviewModalContent patientId={viewModalData.id} />
+            {currentDependent && (
+              <div className="space-y-6">
+                {/* Header with Photo and Basic Info */}
+                <Card className="border-blue-200 bg-blue-50/30">
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-6">
+                      <div className="w-24 h-24 rounded-full overflow-hidden bg-gray-200 flex items-center justify-center border-4 border-white shadow-lg">
+                        {currentDependent.photo_url ? (
+                          <img 
+                            src={currentDependent.photo_url} 
+                            alt={currentDependent.name} 
+                            className="w-full h-full object-cover" 
+                          />
+                        ) : (
+                          <User className="h-12 w-12 text-gray-400" />
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="text-2xl font-bold text-gray-800 mb-2">
+                          {currentDependent.title} {currentDependent.name}
+                        </h3>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                          <div>
+                            <Label className="text-sm font-medium text-gray-500">Patient ID</Label>
+                            <p className="font-mono text-sm bg-white px-2 py-1 rounded">
+                              {currentDependent.patient_id}
+                            </p>
+                          </div>
+                          <div>
+                            <Label className="text-sm font-medium text-gray-500">Type</Label>
+                            <Badge variant="secondary">
+                              {currentDependent.dependent_type}
+                            </Badge>
+                          </div>
+                          <div>
+                            <Label className="text-sm font-medium text-gray-500">Relationship</Label>
+                            <Badge variant="outline">
+                              {currentDependent.relationship}
+                            </Badge>
+                          </div>
+                          <div>
+                            <Label className="text-sm font-medium text-gray-500">Age/Gender</Label>
+                            <p className="font-medium">{currentDependent.age}y / {currentDependent.gender}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Personal Information */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-lg">Personal Information</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div>
+                        <Label className="text-sm font-medium text-gray-500">Date of Birth</Label>
+                        <p className="font-medium">{currentDependent.date_of_birth || "Not provided"}</p>
+                      </div>
+                      <div>
+                        <Label className="text-sm font-medium text-gray-500">Marital Status</Label>
+                        <p className="font-medium">{currentDependent.marital_status || "Not specified"}</p>
+                      </div>
+                      <div>
+                        <Label className="text-sm font-medium text-gray-500">Registration Date</Label>
+                        <p className="font-medium">
+                          {currentDependent.created_at ? 
+                            new Date(currentDependent.created_at).toLocaleDateString() : 
+                            "Not available"
+                          }
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Contact Information */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-lg">Contact Information</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div>
+                        <Label className="text-sm font-medium text-gray-500">Email</Label>
+                        <p className="font-medium">{currentDependent.email || "Not provided"}</p>
+                      </div>
+                      <div>
+                        <Label className="text-sm font-medium text-gray-500">Phone</Label>
+                        <p className="font-medium">{currentDependent.phone || "Not provided"}</p>
+                      </div>
+                      <div>
+                        <Label className="text-sm font-medium text-gray-500">State of Residence</Label>
+                        <p className="font-medium">{currentDependent.state_of_residence || "Not provided"}</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Address Information */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Address Information</CardTitle>
+                  </CardHeader>
+                  <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-sm font-medium text-gray-500">Residential Address</Label>
+                      <p className="font-medium">{currentDependent.residential_address || "Not provided"}</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-gray-500">Permanent Address</Label>
+                      <p className="font-medium">{currentDependent.permanent_address || "Not provided"}</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-gray-500">State of Origin</Label>
+                      <p className="font-medium">{currentDependent.state_of_origin || "Not provided"}</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-gray-500">LGA</Label>
+                      <p className="font-medium">{currentDependent.local_government_area || "Not provided"}</p>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Medical Information */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-lg">Medical Information</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div>
+                        <Label className="text-sm font-medium text-gray-500">Blood Group</Label>
+                        <p className="font-medium">{currentDependent.blood_group || "Not specified"}</p>
+                      </div>
+                      <div>
+                        <Label className="text-sm font-medium text-gray-500">Genotype</Label>
+                        <p className="font-medium">{currentDependent.genotype || "Not specified"}</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Next of Kin */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-lg">Next of Kin</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div>
+                        <Label className="text-sm font-medium text-gray-500">Name</Label>
+                        <p className="font-medium">
+                          {currentDependent.nok_first_name || currentDependent.nok_last_name
+                            ? `${currentDependent.nok_first_name} ${currentDependent.nok_last_name}`.trim()
+                            : "Not provided"}
+                        </p>
+                      </div>
+                      <div>
+                        <Label className="text-sm font-medium text-gray-500">Relationship</Label>
+                        <p className="font-medium">{currentDependent.nok_relationship || "Not specified"}</p>
+                      </div>
+                      <div>
+                        <Label className="text-sm font-medium text-gray-500">Phone</Label>
+                        <p className="font-medium">{currentDependent.nok_phone || "Not provided"}</p>
+                      </div>
+                      <div>
+                        <Label className="text-sm font-medium text-gray-500">Address</Label>
+                        <p className="font-medium">{currentDependent.nok_address || "Not provided"}</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              </div>
             )}
-            <DialogFooter>
-              <Button variant="outline" onClick={closeViewModal}>
+            <DialogFooter className="pt-6 border-t">
+              <Button onClick={() => setShowViewModal(false)} className="w-full">
                 Close
               </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
-        <AlertDialog open={!!deleteConfirm} onOpenChange={() => setDeleteConfirm(null)}>
+
+        {/* Delete Confirmation Dialog */}
+        <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Delete Dependent</AlertDialogTitle>
+              <AlertDialogTitle className="flex items-center gap-2">
+                <AlertCircle className="h-5 w-5 text-red-600" />
+                Confirm Deletion
+              </AlertDialogTitle>
               <AlertDialogDescription>
-                Are you sure you want to delete {deleteConfirm?.dependentName}?
-                This action cannot be undone.
+                Are you sure you want to permanently delete{" "}
+                <strong>{currentDependent?.name}</strong>?
+                <br />
+                <span className="text-sm text-gray-500 mt-2 block">
+                  Patient ID: {currentDependent?.patient_id}
+                </span>
+                <br />
+                This action cannot be undone and will permanently remove this dependent from the system.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={confirmDelete} className="bg-red-600 hover:bg-red-700">
-                Delete
+              <AlertDialogCancel disabled={operationLoading.delete}>
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDelete}
+                disabled={operationLoading.delete}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                {operationLoading.delete ? (
+                  <div className="flex items-center">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Deleting...
+                  </div>
+                ) : (
+                  "Delete Dependent"
+                )}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {/* Success Dialog */}
+        <AlertDialog open={showSuccessDialog} onOpenChange={setShowSuccessDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle className="flex items-center gap-2 text-green-700">
+                <User className="h-5 w-5" />
+                Success
+              </AlertDialogTitle>
+              <AlertDialogDescription className="text-gray-700">
+                {dialogMessage}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogAction 
+                onClick={() => setShowSuccessDialog(false)}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                OK
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Error Dialog */}
         <AlertDialog open={showErrorDialog} onOpenChange={setShowErrorDialog}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Error</AlertDialogTitle>
-              <AlertDialogDescription>{dialogMessage}</AlertDialogDescription>
+              <AlertDialogTitle className="flex items-center gap-2 text-red-700">
+                <AlertCircle className="h-5 w-5" />
+                Error
+              </AlertDialogTitle>
+              <AlertDialogDescription className="text-gray-700">
+                {dialogMessage}
+              </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogAction onClick={() => setShowErrorDialog(false)}>OK</AlertDialogAction>
+              <AlertDialogAction 
+                onClick={() => setShowErrorDialog(false)}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                OK
+              </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>

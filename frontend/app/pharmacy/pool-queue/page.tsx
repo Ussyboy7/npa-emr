@@ -1,491 +1,119 @@
+// PharmacyPoolQueue.tsx
 "use client";
 
-import { useState } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Select, SelectItem, SelectTrigger, SelectValue, SelectContent } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Search, Eye, Clock, Users, Pill, ArrowRight, UserCheck, X, Activity, AlertTriangle, Shield, Package, CheckCircle, AlertCircle, Stethoscope, RefreshCw, Plus } from "lucide-react";
+import React, { useState, useEffect, useCallback } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Search, Eye, Clock, Users, Pill, UserCheck, X, Activity, AlertTriangle, Shield, Package, CheckCircle, AlertCircle, Stethoscope, RefreshCw, Plus } from 'lucide-react';
 
-type Priority = "High" | "Medium" | "Normal";
+// API configuration
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_HEADERS = {
+  "Content-Type": "application/json",
+  // Add CSRF token for production if needed
+  // "X-CSRFToken": getCSRFToken(), // Implement this function if needed
+};
+
+// Type definitions
+type Priority = "Emergency" | "High" | "Medium" | "Low";
 type PharmacyStatus = "Pending" | "Processing" | "Ready" | "Partially Dispensed" | "Dispensed" | "On Hold";
-type PrescriptionStatus = "Pending" | "Available" | "Out of Stock" | "Dispensed" | "Substituted";
+type PrescriptionItemStatus = "Pending" | "Available" | "Out of Stock" | "Dispensed" | "Substituted";
 
 interface PrescriptionItem {
   id: string;
-  medication: string;
-  strength: string;
+  medication_details: {
+    id: string;
+    name: string;
+    strength: string;
+    current_stock: number;
+    category: string;
+  };
   dosage: string;
   frequency: string;
+  frequency_display: string;
   duration: string;
+  route: string;
+  route_display: string;
   quantity: number;
   instructions: string;
-  genericAvailable: boolean;
-  inStock: boolean;
-  stockLevel?: number;
-  status: PrescriptionStatus;
-  substitutedWith?: {
-    medication: string;
+  status: PrescriptionItemStatus;
+  status_display: string;
+  substituted_with_details?: {
+    name: string;
     strength: string;
     reason: string;
-    approvedBy: string;
+    approved_by: string;
   };
-  dispensedQuantity?: number;
-  dispensedDate?: string;
-  dispensedBy?: string;
-  selectedForDispensing?: boolean;
-  partialQuantity?: number;
+  dispensed_quantity?: number;
+  dispensed_date?: string;
+  dispensed_by_name?: string;
+  selected_for_dispensing?: boolean;
+  partial_quantity?: number;
 }
 
 interface PharmacyQueueItem {
   id: string;
-  patientId: string;
-  patientName: string;
-  priority: Priority;
-  waitTime: string;
-  prescribedBy: string;
-  assignedTo: string;
+  prescription_details: {
+    id: string;
+    patient_details: {
+      id: string;
+      name: string;
+      age: number;
+      gender: string;
+      mrn: string;
+      allergies: string[];
+      phone_number: string;
+      employee_category: string;
+      location: string;
+    };
+    prescribed_by_name: string;
+    visit_details: {
+      consultation_room?: {
+        name: string;
+      };
+      special_instructions?: string;
+    };
+    items: PrescriptionItem[];
+    notes: string;
+    created_at: string;
+    total_items: number;
+    available_items: number;
+    out_of_stock_items: number;
+    dispensed_items: number;
+  };
   status: PharmacyStatus;
-  orderTime: string;
-  orderDate: string;
-  estimatedCompletionTime: string;
-  age: number;
-  gender: string;
-  phoneNumber: string;
-  employeeCategory: string;
-  location?: string;
-  prescriptions: PrescriptionItem[];
-  allergies: string[];
-  specialInstructions?: string;
-  consultationRoom?: string;
-  sentFromConsultation?: boolean;
-  pharmacistNotes?: string;
-  lastDispensedDate?: string;
+  priority: Priority;
+  assigned_pharmacist_name?: string;
+  wait_time_minutes: number;
+  estimated_wait?: number;
+  pharmacist_notes?: string;
+  created_at: string;
 }
 
-interface PrescriptionHistory {
-  dispensedMedications: DispensedMedication[];
-  interactions: DrugInteraction[];
-  adherenceRecords: AdherenceRecord[];
+interface PharmacyStatistics {
+  total_in_queue: number;
+  high_priority: number;
+  pending: number;
+  processing: number;
+  ready: number;
+  on_hold: number;
+  partially_dispensed: number;
+  from_consultation: number;
+  average_wait_time: number;
+  total_available_items: number;
+  total_dispensed_items: number;
 }
 
-interface DispensedMedication {
-  id: string;
-  medication: string;
-  strength: string;
-  quantity: number;
-  dispensedDate: string;
-  dispensedBy: string;
-  prescribedBy: string;
-  refillsRemaining: number;
-  nextRefillDate?: string;
-  adherenceScore?: number;
-}
-
-interface DrugInteraction {
-  id: string;
-  drug1: string;
-  drug2: string;
-  interactionType: "Major" | "Moderate" | "Minor";
-  description: string;
-  recommendation: string;
-  dateIdentified: string;
-}
-
-interface AdherenceRecord {
-  id: string;
-  medication: string;
-  period: string;
-  adherencePercentage: number;
-  missedDoses: number;
-  notes?: string;
-}
-
-// Mock pharmacy queue data
-const pharmacyQueueMock: PharmacyQueueItem[] = [
-  {
-    id: "RX001",
-    patientId: "P001",
-    patientName: "John Doe",
-    priority: "High",
-    waitTime: "35 min",
-    prescribedBy: "Dr. Smith",
-    assignedTo: "Pharm. Johnson",
-    status: "Processing",
-    orderTime: "08:30 AM",
-    orderDate: "2025-08-15",
-    estimatedCompletionTime: "09:15 AM",
-    age: 45,
-    gender: "Male",
-    phoneNumber: "123-456-7890",
-    employeeCategory: "Employee",
-    location: "Headquarters",
-    allergies: ["Penicillin", "Sulfa"],
-    prescriptions: [
-      {
-        id: "PRES001",
-        medication: "Amoxicillin",
-        strength: "500mg",
-        dosage: "1 tablet",
-        frequency: "Three times daily",
-        duration: "7 days",
-        quantity: 21,
-        instructions: "Take with food",
-        genericAvailable: true,
-        inStock: true,
-        stockLevel: 150,
-        status: "Available",
-        selectedForDispensing: false
-      },
-      {
-        id: "PRES002",
-        medication: "Paracetamol",
-        strength: "500mg",
-        dosage: "1-2 tablets",
-        frequency: "Every 4-6 hours as needed",
-        duration: "As needed",
-        quantity: 30,
-        instructions: "Do not exceed 8 tablets in 24 hours",
-        genericAvailable: true,
-        inStock: true,
-        stockLevel: 200,
-        status: "Available",
-        selectedForDispensing: false
-      },
-      {
-        id: "PRES003",
-        medication: "Cough Syrup",
-        strength: "100ml",
-        dosage: "10ml",
-        frequency: "Three times daily",
-        duration: "5 days",
-        quantity: 1,
-        instructions: "Shake well before use",
-        genericAvailable: false,
-        inStock: false,
-        stockLevel: 0,
-        status: "Out of Stock",
-        selectedForDispensing: false
-      }
-    ],
-    consultationRoom: "Room 1",
-    sentFromConsultation: true,
-    specialInstructions: "Patient has difficulty swallowing large tablets"
-  },
-  {
-    id: "RX002",
-    patientId: "P002",
-    patientName: "Jane Smith",
-    priority: "Medium",
-    waitTime: "22 min",
-    prescribedBy: "Dr. Wilson",
-    assignedTo: "Unassigned",
-    status: "Pending",
-    orderTime: "09:15 AM",
-    orderDate: "2025-08-15",
-    estimatedCompletionTime: "09:45 AM",
-    age: 34,
-    gender: "Female",
-    phoneNumber: "987-654-3210",
-    employeeCategory: "Employee",
-    location: "Branch Office",
-    allergies: [],
-    prescriptions: [
-      {
-        id: "PRES004",
-        medication: "Ibuprofen",
-        strength: "400mg",
-        dosage: "1 tablet",
-        frequency: "Three times daily",
-        duration: "5 days",
-        quantity: 15,
-        instructions: "Take with food to prevent stomach upset",
-        genericAvailable: true,
-        inStock: true,
-        stockLevel: 75,
-        status: "Available",
-        selectedForDispensing: false
-      },
-      {
-        id: "PRES005",
-        medication: "Vitamin D3",
-        strength: "1000 IU",
-        dosage: "1 capsule",
-        frequency: "Once daily",
-        duration: "30 days",
-        quantity: 30,
-        instructions: "Take with largest meal of the day",
-        genericAvailable: false,
-        inStock: false,
-        stockLevel: 0,
-        status: "Out of Stock",
-        selectedForDispensing: false
-      }
-    ],
-    sentFromConsultation: true
-  },
-  {
-    id: "RX003",
-    patientId: "P003",
-    patientName: "Robert Johnson",
-    priority: "Normal",
-    waitTime: "15 min",
-    prescribedBy: "Dr. Davis",
-    assignedTo: "Pharm. Williams",
-    status: "Partially Dispensed",
-    orderTime: "10:00 AM",
-    orderDate: "2025-08-15",
-    estimatedCompletionTime: "10:30 AM",
-    age: 58,
-    gender: "Male",
-    phoneNumber: "555-123-4567",
-    employeeCategory: "Retiree",
-    location: "Remote",
-    allergies: ["Aspirin"],
-    prescriptions: [
-      {
-        id: "PRES006",
-        medication: "Lisinopril",
-        strength: "10mg",
-        dosage: "1 tablet",
-        frequency: "Once daily",
-        duration: "30 days",
-        quantity: 30,
-        instructions: "Take at the same time each day",
-        genericAvailable: true,
-        inStock: true,
-        stockLevel: 120,
-        status: "Dispensed",
-        dispensedQuantity: 30,
-        dispensedDate: "2025-08-15",
-        dispensedBy: "Pharm. Williams",
-        selectedForDispensing: false
-      },
-      {
-        id: "PRES007",
-        medication: "Metformin",
-        strength: "500mg",
-        dosage: "1 tablet",
-        frequency: "Twice daily",
-        duration: "30 days",
-        quantity: 60,
-        instructions: "Take with meals",
-        genericAvailable: true,
-        inStock: true,
-        stockLevel: 180,
-        status: "Available",
-        selectedForDispensing: false
-      },
-      {
-        id: "PRES008",
-        medication: "Aspirin",
-        strength: "75mg",
-        dosage: "1 tablet",
-        frequency: "Once daily",
-        duration: "30 days",
-        quantity: 30,
-        instructions: "Take with food",
-        genericAvailable: true,
-        inStock: false,
-        stockLevel: 0,
-        status: "Out of Stock",
-        selectedForDispensing: false
-      }
-    ],
-    lastDispensedDate: "2025-07-15",
-    pharmacistNotes: "Lisinopril dispensed, waiting for Aspirin stock"
-  },
-  {
-    id: "RX004",
-    patientId: "P004",
-    patientName: "Sarah Wilson",
-    priority: "High",
-    waitTime: "8 min",
-    prescribedBy: "Dr. Brown",
-    assignedTo: "Pharm. Johnson",
-    status: "Ready",
-    orderTime: "10:30 AM",
-    orderDate: "2025-08-15",
-    estimatedCompletionTime: "11:00 AM",
-    age: 52,
-    gender: "Female",
-    phoneNumber: "444-987-6543",
-    employeeCategory: "Employee",
-    location: "Headquarters",
-    allergies: ["Codeine", "Latex"],
-    prescriptions: [
-      {
-        id: "PRES009",
-        medication: "Albuterol Inhaler",
-        strength: "90 mcg",
-        dosage: "2 puffs",
-        frequency: "Every 4-6 hours as needed",
-        duration: "As needed",
-        quantity: 1,
-        instructions: "Shake well before use. Rinse mouth after use",
-        genericAvailable: false,
-        inStock: true,
-        stockLevel: 25,
-        status: "Available",
-        selectedForDispensing: false
-      },
-      {
-        id: "PRES010",
-        medication: "Prednisone",
-        strength: "10mg",
-        dosage: "2 tablets",
-        frequency: "Once daily with food",
-        duration: "5 days",
-        quantity: 10,
-        instructions: "Take in the morning. Do not stop abruptly",
-        genericAvailable: true,
-        inStock: true,
-        stockLevel: 100,
-        status: "Available",
-        selectedForDispensing: false
-      }
-    ],
-    consultationRoom: "Room 4",
-    sentFromConsultation: true,
-    specialInstructions: "Patient experiencing acute asthma exacerbation"
-  }
-];
-
-// Enhanced mock prescription history data
-const mockPrescriptionHistory: { [patientId: string]: PrescriptionHistory } = {
-  "P001": {
-    dispensedMedications: [
-      {
-        id: "DISP001",
-        medication: "Lisinopril 10mg",
-        strength: "10mg",
-        quantity: 30,
-        dispensedDate: "2025-07-15",
-        dispensedBy: "Pharm. Johnson",
-        prescribedBy: "Dr. Smith",
-        refillsRemaining: 2,
-        nextRefillDate: "2025-08-15",
-        adherenceScore: 95
-      },
-      {
-        id: "DISP002",
-        medication: "Metformin 500mg",
-        strength: "500mg",
-        quantity: 60,
-        dispensedDate: "2025-07-01",
-        dispensedBy: "Pharm. Williams",
-        prescribedBy: "Dr. Smith",
-        refillsRemaining: 1,
-        adherenceScore: 88
-      }
-    ],
-    interactions: [
-      {
-        id: "INT001",
-        drug1: "Lisinopril",
-        drug2: "Potassium supplements",
-        interactionType: "Moderate",
-        description: "May increase potassium levels",
-        recommendation: "Monitor potassium levels regularly",
-        dateIdentified: "2025-07-15"
-      }
-    ],
-    adherenceRecords: [
-      {
-        id: "ADH001",
-        medication: "Lisinopril",
-        period: "July 2025",
-        adherencePercentage: 95,
-        missedDoses: 2,
-        notes: "Generally compliant, missed weekend doses"
-      }
-    ]
-  },
-  "P002": {
-    dispensedMedications: [
-      {
-        id: "DISP003",
-        medication: "Ibuprofen 400mg",
-        strength: "400mg",
-        quantity: 30,
-        dispensedDate: "2025-07-20",
-        dispensedBy: "Pharm. Johnson",
-        prescribedBy: "Dr. Wilson",
-        refillsRemaining: 0,
-        adherenceScore: 92
-      }
-    ],
-    interactions: [],
-    adherenceRecords: [
-      {
-        id: "ADH002",
-        medication: "Ibuprofen",
-        period: "July 2025",
-        adherencePercentage: 92,
-        missedDoses: 1,
-        notes: "Good compliance"
-      }
-    ]
-  },
-  "P003": {
-    dispensedMedications: [
-      {
-        id: "DISP004",
-        medication: "Lisinopril 10mg",
-        strength: "10mg",
-        quantity: 30,
-        dispensedDate: "2025-08-15",
-        dispensedBy: "Pharm. Williams",
-        prescribedBy: "Dr. Davis",
-        refillsRemaining: 2,
-        adherenceScore: 98
-      }
-    ],
-    interactions: [],
-    adherenceRecords: [
-      {
-        id: "ADH003",
-        medication: "Lisinopril",
-        period: "August 2025",
-        adherencePercentage: 98,
-        missedDoses: 0,
-        notes: "Excellent compliance"
-      }
-    ]
-  },
-  "P004": {
-    dispensedMedications: [
-      {
-        id: "DISP005",
-        medication: "Albuterol Inhaler",
-        strength: "90 mcg",
-        quantity: 2,
-        dispensedDate: "2025-07-10",
-        dispensedBy: "Pharm. Johnson",
-        prescribedBy: "Dr. Brown",
-        refillsRemaining: 1,
-        adherenceScore: 85
-      }
-    ],
-    interactions: [],
-    adherenceRecords: [
-      {
-        id: "ADH004",
-        medication: "Albuterol Inhaler",
-        period: "July 2025",
-        adherencePercentage: 85,
-        missedDoses: 3,
-        notes: "Patient sometimes forgets inhaler at home"
-      }
-    ]
-  }
-};
-
+// Utility functions
 const formatDate = (dateString: string) => {
+  if (!dateString) return '';
   const date = new Date(dateString);
   return date.toLocaleDateString('en-US', { 
     year: 'numeric', 
@@ -494,53 +122,204 @@ const formatDate = (dateString: string) => {
   });
 };
 
+const formatTime = (dateString: string) => {
+  if (!dateString) return '';
+  const date = new Date(dateString);
+  return date.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  });
+};
+
+// API service with error handling
+class ApiService {
+  static async fetchWithAuth(url: string, options: RequestInit = {}) {
+    try {
+      const response = await fetch(url, {
+        ...options,
+        headers: {
+          ...API_HEADERS,
+          ...(options.headers || {}),
+        },
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error(`API Error fetching ${url}:`, error);
+      throw error;
+    }
+  }
+
+  static async fetchQueue(filters: {
+    status?: PharmacyStatus | "All";
+    priority?: Priority | "All";
+  }) {
+    const params = new URLSearchParams();
+    if (filters.status && filters.status !== "All") params.append('status', filters.status);
+    if (filters.priority && filters.priority !== "All") params.append('priority', filters.priority);
+    
+    return this.fetchWithAuth(`${API_URL}/api/pharmacy-queue/?${params}`);
+  }
+
+  static async fetchStatistics() {
+    return this.fetchWithAuth(`${API_URL}/api/pharmacy-queue/statistics/`);
+  }
+
+  static async fetchMedications(search = '') {
+    const url = search 
+      ? `${API_URL}/api/medications/?search=${encodeURIComponent(search)}`
+      : `${API_URL}/api/medications/`;
+    return this.fetchWithAuth(url);
+  }
+
+  static async assignToMe(queueId: string) {
+    return this.fetchWithAuth(`${API_URL}/api/pharmacy-queue/${queueId}/assign_to_me/`, {
+      method: 'POST',
+    });
+  }
+
+  static async markReady(queueId: string) {
+    return this.fetchWithAuth(`${API_URL}/api/pharmacy-queue/${queueId}/mark_ready/`, {
+      method: 'POST',
+    });
+  }
+
+  static async dispenseItems(queueId: string, items: any[]) {
+    return this.fetchWithAuth(`${API_URL}/api/pharmacy-queue/${queueId}/dispense_items/`, {
+      method: 'POST',
+      body: JSON.stringify({
+        items: items.map(item => ({
+          item_id: item.id,
+          quantity_to_dispense: item.partial_quantity || item.quantity,
+          pharmacist_notes: ""
+        }))
+      }),
+    });
+  }
+
+  static async substituteMedication(queueId: string, prescriptionItemId: string, substituteMedicationId: string, reason: string) {
+    return this.fetchWithAuth(`${API_URL}/api/pharmacy-queue/${queueId}/substitute_medication/`, {
+      method: 'POST',
+      body: JSON.stringify({
+        prescription_item_id: prescriptionItemId,
+        substitute_medication_id: substituteMedicationId,
+        reason,
+        approved_by: "current-user"
+      }),
+    });
+  }
+}
+
 export default function PharmacyPoolQueue() {
+  // State management
   const [searchTerm, setSearchTerm] = useState("");
   const [priorityFilter, setPriorityFilter] = useState<Priority | "All">("All");
   const [statusFilter, setStatusFilter] = useState<PharmacyStatus | "All">("All");
-  const [dateFilter, setDateFilter] = useState("");
-  const [prescriberFilter, setPrescriberFilter] = useState<string | "All">("All");
   const [currentPage, setCurrentPage] = useState(1);
-  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
-  const [activeHistoryTab, setActiveHistoryTab] = useState("dispensed");
+  const [selectedQueueId, setSelectedQueueId] = useState<string | null>(null);
   const [showSubstituteModal, setShowSubstituteModal] = useState<string | null>(null);
   const [substituteForm, setSubstituteForm] = useState({
-    medication: "",
-    strength: "",
+    substitute_medication_id: "",
     reason: ""
   });
-  const [selectedQueueId, setSelectedQueueId] = useState<string | null>(null);
+  const [queue, setQueue] = useState<PharmacyQueueItem[]>([]);
+  const [statistics, setStatistics] = useState<PharmacyStatistics | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [medications, setMedications] = useState<any[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  
   const itemsPerPage = 5;
 
-  // Sort queue by priority (High > Medium > Normal) and then by wait time
-  const [queue, setQueue] = useState<PharmacyQueueItem[]>(
-    [...pharmacyQueueMock].sort((a, b) => {
-      const priorityOrder = { "High": 3, "Medium": 2, "Normal": 1 };
-      const aPriority = priorityOrder[a.priority];
-      const bPriority = priorityOrder[b.priority];
+  // Data fetching with useCallback for performance
+  const fetchQueue = useCallback(async () => {
+    try {
+      setLoading(true);
+      const data = await ApiService.fetchQueue({
+        status: statusFilter,
+        priority: priorityFilter,
+      });
       
-      if (aPriority !== bPriority) {
-        return bPriority - aPriority;
-      }
-      
-      const aWaitMinutes = parseInt(a.waitTime.split(' ')[0]);
-      const bWaitMinutes = parseInt(b.waitTime.split(' ')[0]);
-      return bWaitMinutes - aWaitMinutes;
-    })
-  );
+      // Filter out any items with invalid structure
+      const validQueue = (data.results || data).filter((item: any) => 
+        item && 
+        item.prescription_details && 
+        item.prescription_details.patient_details &&
+        item.prescription_details.items
+      );
+      setQueue(validQueue);
+      setError(null);
+    } catch (error) {
+      console.error('Error fetching pharmacy queue:', error);
+      setError('Failed to fetch pharmacy queue. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }, [statusFilter, priorityFilter]);
+
+  const fetchStatistics = useCallback(async () => {
+    try {
+      const data = await ApiService.fetchStatistics();
+      setStatistics(data);
+    } catch (error) {
+      console.error('Error fetching statistics:', error);
+    }
+  }, []);
+
+  const fetchMedications = useCallback(async (search = '') => {
+    try {
+      const data = await ApiService.fetchMedications(search);
+      setMedications(data.results || data);
+    } catch (error) {
+      console.error('Error fetching medications:', error);
+    }
+  }, []);
+
+  // Initial data load
+  useEffect(() => {
+    const loadData = async () => {
+      setIsRefreshing(true);
+      await Promise.all([
+        fetchQueue(),
+        fetchStatistics(),
+        fetchMedications()
+      ]);
+      setIsRefreshing(false);
+    };
+    
+    loadData();
+
+    // Set up polling for real-time updates
+    const interval = setInterval(() => {
+      fetchQueue();
+      fetchStatistics();
+    }, 30000); // Poll every 30 seconds
+
+    return () => clearInterval(interval);
+  }, [fetchQueue, fetchStatistics]);
 
   // Handle prescription selection for dispensing
-  const handlePrescriptionSelection = (queueId: string, prescriptionId: string, selected: boolean) => {
-    setQueue((prev) =>
-      prev.map((item) =>
+  const handlePrescriptionSelection = (queueId: string, prescriptionItemId: string, selected: boolean) => {
+    setQueue(prev =>
+      prev.map(item =>
         item.id === queueId
           ? {
               ...item,
-              prescriptions: item.prescriptions.map((prescription) =>
-                prescription.id === prescriptionId
-                  ? { ...prescription, selectedForDispensing: selected }
-                  : prescription
-              )
+              prescription_details: {
+                ...item.prescription_details,
+                items: item.prescription_details.items.map(prescItem =>
+                  prescItem.id === prescriptionItemId
+                    ? { ...prescItem, selected_for_dispensing: selected }
+                    : prescItem
+                )
+              }
             }
           : item
       )
@@ -549,16 +328,19 @@ export default function PharmacyPoolQueue() {
 
   // Handle select all prescriptions for a queue item
   const handleSelectAllPrescriptions = (queueId: string, selectAll: boolean) => {
-    setQueue((prev) =>
-      prev.map((item) =>
+    setQueue(prev =>
+      prev.map(item =>
         item.id === queueId
           ? {
               ...item,
-              prescriptions: item.prescriptions.map((prescription) =>
-                prescription.status === "Available" || prescription.status === "Substituted"
-                  ? { ...prescription, selectedForDispensing: selectAll }
-                  : prescription
-              )
+              prescription_details: {
+                ...item.prescription_details,
+                items: item.prescription_details.items.map(prescItem =>
+                  (prescItem.status === "Available" || prescItem.status === "Substituted")
+                    ? { ...prescItem, selected_for_dispensing: selectAll }
+                    : prescItem
+                )
+              }
             }
           : item
       )
@@ -566,17 +348,22 @@ export default function PharmacyPoolQueue() {
   };
 
   // Handle partial quantity change
-  const handlePartialQuantityChange = (queueId: string, prescriptionId: string, quantity: number) => {
-    setQueue((prev) =>
-      prev.map((item) =>
+  const handlePartialQuantityChange = (queueId: string, prescriptionItemId: string, quantity: number) => {
+    // Validate quantity
+    const parsedQuantity = Math.max(1, quantity);
+    setQueue(prev =>
+      prev.map(item =>
         item.id === queueId
           ? {
               ...item,
-              prescriptions: item.prescriptions.map((prescription) =>
-                prescription.id === prescriptionId
-                  ? { ...prescription, partialQuantity: quantity }
-                  : prescription
-              )
+              prescription_details: {
+                ...item.prescription_details,
+                items: item.prescription_details.items.map(prescItem =>
+                  prescItem.id === prescriptionItemId
+                    ? { ...prescItem, partial_quantity: parsedQuantity }
+                    : prescItem
+                )
+              }
             }
           : item
       )
@@ -584,135 +371,94 @@ export default function PharmacyPoolQueue() {
   };
 
   // Handle bulk dispensing of selected prescriptions
-  const handleDispenseSelected = (queueId: string) => {
-    const item = queue.find(q => q.id === queueId);
-    if (!item) return;
+  const handleDispenseSelected = async (queueId: string) => {
+    const queueItem = queue.find(q => q.id === queueId);
+    if (!queueItem) return;
 
-    const selectedPrescriptions = item.prescriptions.filter(p => p.selectedForDispensing);
-    if (selectedPrescriptions.length === 0) {
+    const selectedItems = queueItem.prescription_details.items.filter(item => item.selected_for_dispensing);
+    if (selectedItems.length === 0) {
       alert("Please select at least one prescription to dispense");
       return;
     }
 
-    setQueue((prev) =>
-      prev.map((queueItem) => {
-        if (queueItem.id === queueId) {
-          const updatedPrescriptions = queueItem.prescriptions.map((prescription) => {
-            if (prescription.selectedForDispensing) {
-              const quantityToDispense = prescription.partialQuantity || prescription.quantity;
-              return {
-                ...prescription,
-                status: "Dispensed" as PrescriptionStatus,
-                dispensedQuantity: quantityToDispense,
-                dispensedDate: new Date().toISOString().split('T')[0],
-                dispensedBy: "Pharm. Current User",
-                selectedForDispensing: false,
-                partialQuantity: undefined
-              };
-            }
-            return prescription;
-          });
-
-          const allDispensed = updatedPrescriptions.every(p => 
-            p.status === "Dispensed" || p.status === "Out of Stock"
-          );
-          
-          const anyDispensed = updatedPrescriptions.some(p => p.status === "Dispensed");
-
-          let newStatus: PharmacyStatus = queueItem.status;
-          if (allDispensed) {
-            newStatus = "Dispensed";
-          } else if (anyDispensed) {
-            newStatus = "Partially Dispensed";
-          }
-
-          return {
-            ...queueItem,
-            prescriptions: updatedPrescriptions,
-            status: newStatus
-          };
-        }
-        return queueItem;
-      })
-    );
+    try {
+      setIsRefreshing(true);
+      await ApiService.dispenseItems(queueId, selectedItems);
+      await fetchQueue();
+      await fetchStatistics();
+      alert('Items dispensed successfully');
+    } catch (error) {
+      console.error('Error dispensing items:', error);
+      alert(`Failed to dispense items: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   // Handle pharmacy actions
-  const handleAssignToMe = (queueId: string) => {
-    setQueue((prev) =>
-      prev.map((item) =>
-        item.id === queueId
-          ? { ...item, assignedTo: "Pharm. Current User", status: "Processing" as PharmacyStatus }
-          : item
-      )
-    );
+  const handleAssignToMe = async (queueId: string) => {
+    try {
+      setIsRefreshing(true);
+      await ApiService.assignToMe(queueId);
+      await fetchQueue();
+      alert('Prescription assigned successfully');
+    } catch (error) {
+      console.error('Error assigning prescription:', error);
+      alert(`Failed to assign prescription: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
-  const handleMarkReady = (queueId: string) => {
-    setQueue((prev) =>
-      prev.map((item) =>
-        item.id === queueId
-          ? { ...item, status: "Ready" as PharmacyStatus }
-          : item
-      )
-    );
+  const handleMarkReady = async (queueId: string) => {
+    try {
+      setIsRefreshing(true);
+      await ApiService.markReady(queueId);
+      await fetchQueue();
+      alert('Prescription marked as ready');
+    } catch (error) {
+      console.error('Error marking prescription as ready:', error);
+      alert(`Failed to mark prescription as ready: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
-  const handleSubstituteDrug = (queueId: string, prescriptionId: string) => {
-    if (!substituteForm.medication || !substituteForm.strength || !substituteForm.reason) {
+  const handleSubstituteDrug = async (prescriptionItemId: string) => {
+    if (!substituteForm.substitute_medication_id || !substituteForm.reason) {
       alert("Please fill in all substitute fields");
       return;
     }
 
-    setQueue((prev) =>
-      prev.map((item) => {
-        if (item.id === queueId) {
-          const updatedPrescriptions = item.prescriptions.map((prescription) => {
-            if (prescription.id === prescriptionId) {
-              return {
-                ...prescription,
-                status: "Substituted" as PrescriptionStatus,
-                inStock: true, // Mark as in stock after substitution
-                substitutedWith: {
-                  medication: substituteForm.medication,
-                  strength: substituteForm.strength,
-                  reason: substituteForm.reason,
-                  approvedBy: "Pharm. Current User"
-                }
-              };
-            }
-            return prescription;
-          });
-
-          return {
-            ...item,
-            prescriptions: updatedPrescriptions
-          };
-        }
-        return item;
-      })
-    );
-
-    setShowSubstituteModal(null);
-    setSubstituteForm({ medication: "", strength: "", reason: "" });
-  };
-
-  const handleHold = (queueId: string) => {
-    setQueue((prev) =>
-      prev.map((item) =>
-        item.id === queueId
-          ? { ...item, status: "On Hold" as PharmacyStatus }
-          : item
-      )
-    );
+    try {
+      setIsRefreshing(true);
+      const [queueId] = (showSubstituteModal || '').split('|');
+      await ApiService.substituteMedication(
+        queueId, 
+        prescriptionItemId, 
+        substituteForm.substitute_medication_id, 
+        substituteForm.reason
+      );
+      
+      await fetchQueue();
+      setShowSubstituteModal(null);
+      setSubstituteForm({ substitute_medication_id: "", reason: "" });
+      alert('Medication substituted successfully');
+    } catch (error) {
+      console.error('Error substituting medication:', error);
+      alert(`Failed to substitute medication: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   // Get badge colors
   const getPriorityColor = (priority: Priority) => {
     switch (priority) {
-      case "High": return "bg-red-100 text-red-800 border-red-200";
+      case "Emergency": return "bg-red-100 text-red-800 border-red-200";
+      case "High": return "bg-orange-100 text-orange-800 border-orange-200";
       case "Medium": return "bg-yellow-100 text-yellow-800 border-yellow-200";
-      case "Normal": return "bg-green-100 text-green-800 border-green-200";
+      case "Low": return "bg-green-100 text-green-800 border-green-200";
       default: return "bg-gray-100 text-gray-800 border-gray-200";
     }
   };
@@ -729,7 +475,7 @@ export default function PharmacyPoolQueue() {
     }
   };
 
-  const getPrescriptionStatusColor = (status: PrescriptionStatus) => {
+  const getPrescriptionStatusColor = (status: PrescriptionItemStatus) => {
     switch (status) {
       case "Available": return "bg-green-100 text-green-800 border-green-200";
       case "Pending": return "bg-gray-100 text-gray-800 border-gray-200";
@@ -740,17 +486,20 @@ export default function PharmacyPoolQueue() {
     }
   };
 
-  // Filters
-  const filteredQueue = queue.filter((item) => {
-    const matchesSearch = item.patientName
-      .toLowerCase()
+  // Filter queue based on search term with safe property access
+  const filteredQueue = queue.filter(item => {
+    // Ensure the item has the required structure
+    if (!item || !item.prescription_details || !item.prescription_details.patient_details || !item.prescription_details.items) {
+      return false;
+    }
+
+    const matchesSearch = item.prescription_details.patient_details.name
+      ?.toLowerCase()
       .includes(searchTerm.toLowerCase()) ||
-      item.prescriptions.some(p => p.medication.toLowerCase().includes(searchTerm.toLowerCase()));
-    const matchesPriority = priorityFilter === "All" || item.priority === priorityFilter;
-    const matchesStatus = statusFilter === "All" || item.status === statusFilter;
-    const matchesDate = !dateFilter || item.orderDate === dateFilter;
-    const matchesPrescriber = prescriberFilter === "All" || item.prescribedBy === prescriberFilter;
-    return matchesSearch && matchesPriority && matchesStatus && matchesDate && matchesPrescriber;
+      item.prescription_details.items.some(prescItem => 
+        prescItem.medication_details?.name?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    return matchesSearch;
   });
 
   const totalPages = Math.ceil(filteredQueue.length / itemsPerPage);
@@ -759,113 +508,117 @@ export default function PharmacyPoolQueue() {
     currentPage * itemsPerPage
   );
 
-  const prescribers = Array.from(new Set(queue.map((item) => item.prescribedBy)));
-
-  // Enhanced summary statistics
-  const stats = {
-    total: queue.length,
-    highPriority: queue.filter(item => item.priority === "High").length,
-    pending: queue.filter(item => item.status === "Pending").length,
-    processing: queue.filter(item => item.status === "Processing").length,
-    ready: queue.filter(item => item.status === "Ready").length,
-    onHold: queue.filter(item => item.status === "On Hold").length,
-    partiallyDispensed: queue.filter(item => item.status === "Partially Dispensed").length,
-    fromConsultation: queue.filter(item => item.sentFromConsultation).length,
-    avgWaitTime: Math.round(
-      queue.reduce((sum, item) => sum + parseInt(item.waitTime.split(' ')[0]), 0) / queue.length
-    ),
-    totalAvailableItems: queue.reduce((sum, item) => 
-      sum + item.prescriptions.filter(p => 
-        p.status === "Available" || p.status === "Substituted"
-      ).length, 0
-    ),
-    totalDispensedItems: queue.reduce((sum, item) => 
-      sum + item.prescriptions.filter(p => p.status === "Dispensed").length, 0
-    )
-  };
-
-  // Get prescription history for selected patient
-  const selectedPatientHistory = selectedPatientId ? mockPrescriptionHistory[selectedPatientId] : null;
+  // Loading state
+  if (loading) {
+    return (
+      <div className="max-w-6xl mx-auto p-6 space-y-6">
+        <div className="text-center py-8">
+          <div className="animate-spin h-8 w-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-4"></div>
+          <p>Loading pharmacy queue...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold">Pharmacy Pool Queue</h1>
+        {isRefreshing && (
+          <div className="flex items-center text-blue-600">
+            <RefreshCw className="h-4 w-4 animate-spin mr-2" />
+            <span className="text-sm">Updating...</span>
+          </div>
+        )}
       </div>
+
+      {/* Error display */}
+      {error && (
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="pt-6">
+            <div className="flex items-center text-red-700">
+              <AlertTriangle className="h-5 w-5 mr-2" />
+              <p>{error}</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Enhanced Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
-        <Card className="bg-card text-card-foreground transition hover:shadow-lg hover:scale-[1.02]">
-          <CardHeader className="flex items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Total in Queue</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.total}</div>
-            <p className="text-xs text-muted-foreground">{stats.highPriority} high priority</p>
-          </CardContent>
-        </Card>
+      {statistics && (
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+          <Card className="bg-card text-card-foreground transition hover:shadow-lg hover:scale-[1.02]">
+            <CardHeader className="flex items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">Total in Queue</CardTitle>
+              <Users className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{statistics.total_in_queue}</div>
+              <p className="text-xs text-muted-foreground">{statistics.high_priority} high priority</p>
+            </CardContent>
+          </Card>
 
-        <Card className="bg-card text-card-foreground transition hover:shadow-lg hover:scale-[1.02]">
-          <CardHeader className="flex items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Available Items</CardTitle>
-            <Package className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">{stats.totalAvailableItems}</div>
-            <p className="text-xs text-muted-foreground">Ready to dispense</p>
-          </CardContent>
-        </Card>
+          <Card className="bg-card text-card-foreground transition hover:shadow-lg hover:scale-[1.02]">
+            <CardHeader className="flex items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">Available Items</CardTitle>
+              <Package className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-600">{statistics.total_available_items}</div>
+              <p className="text-xs text-muted-foreground">Ready to dispense</p>
+            </CardContent>
+          </Card>
 
-        <Card className="bg-card text-card-foreground transition hover:shadow-lg hover:scale-[1.02]">
-          <CardHeader className="flex items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Dispensed Items</CardTitle>
-            <CheckCircle className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-purple-600">{stats.totalDispensedItems}</div>
-            <p className="text-xs text-muted-foreground">Completed</p>
-          </CardContent>
-        </Card>
+          <Card className="bg-card text-card-foreground transition hover:shadow-lg hover:scale-[1.02]">
+            <CardHeader className="flex items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">Dispensed Items</CardTitle>
+              <CheckCircle className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-purple-600">{statistics.total_dispensed_items}</div>
+              <p className="text-xs text-muted-foreground">Completed</p>
+            </CardContent>
+          </Card>
 
-        <Card className="bg-card text-card-foreground transition hover:shadow-lg hover:scale-[1.02]">
-          <CardHeader className="flex items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Processing</CardTitle>
-            <Pill className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-blue-600">{stats.processing}</div>
-            <p className="text-xs text-muted-foreground">Being prepared</p>
-          </CardContent>
-        </Card>
+          <Card className="bg-card text-card-foreground transition hover:shadow-lg hover:scale-[1.02]">
+            <CardHeader className="flex items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">Processing</CardTitle>
+              <Pill className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-blue-600">{statistics.processing}</div>
+              <p className="text-xs text-muted-foreground">Being prepared</p>
+            </CardContent>
+          </Card>
 
-        <Card className="bg-card text-card-foreground transition hover:shadow-lg hover:scale-[1.02]">
-          <CardHeader className="flex items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">On Hold</CardTitle>
-            <AlertCircle className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-red-600">{stats.onHold}</div>
-            <p className="text-xs text-muted-foreground">Need attention</p>
-          </CardContent>
-        </Card>
+          <Card className="bg-card text-card-foreground transition hover:shadow-lg hover:scale-[1.02]">
+            <CardHeader className="flex items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">On Hold</CardTitle>
+              <AlertCircle className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-red-600">{statistics.on_hold}</div>
+              <p className="text-xs text-muted-foreground">Need attention</p>
+            </CardContent>
+          </Card>
 
-        <Card className="bg-card text-card-foreground transition hover:shadow-lg hover:scale-[1.02]">
-          <CardHeader className="flex items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Avg Wait</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.avgWaitTime} min</div>
-            <p className="text-xs text-muted-foreground">Processing time</p>
-          </CardContent>
-        </Card>
-      </div>
+          <Card className="bg-card text-card-foreground transition hover:shadow-lg hover:scale-[1.02]">
+            <CardHeader className="flex items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">Avg Wait</CardTitle>
+              <Clock className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{Math.round(statistics.average_wait_time)} min</div>
+              <p className="text-xs text-muted-foreground">Processing time</p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Search & Filter Section */}
       <div className="space-y-4 p-4 border rounded">
         <h2 className="font-semibold">Search & Filter</h2>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <Label htmlFor="search">Search Queue</Label>
             <div className="relative">
@@ -897,9 +650,10 @@ export default function PharmacyPoolQueue() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="All">All Priorities</SelectItem>
+                <SelectItem value="Emergency">Emergency Priority</SelectItem>
                 <SelectItem value="High">High Priority</SelectItem>
                 <SelectItem value="Medium">Medium Priority</SelectItem>
-                <SelectItem value="Normal">Normal Priority</SelectItem>
+                <SelectItem value="Low">Low Priority</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -927,42 +681,6 @@ export default function PharmacyPoolQueue() {
               </SelectContent>
             </Select>
           </div>
-
-          <div>
-            <Label htmlFor="date-filter">Date Filter</Label>
-            <Input
-              id="date-filter"
-              type="date"
-              value={dateFilter}
-              onChange={(e) => {
-                setDateFilter(e.target.value);
-                setCurrentPage(1);
-              }}
-            />
-          </div>
-
-          <div>
-            <Label>Prescriber Filter</Label>
-            <Select 
-              value={prescriberFilter} 
-              onValueChange={(value) => {
-                setPrescriberFilter(value);
-                setCurrentPage(1);
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Filter by prescriber" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="All">All Prescribers</SelectItem>
-                {prescribers.map((prescriber) => (
-                  <SelectItem key={prescriber} value={prescriber}>
-                    {prescriber}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
         </div>
       </div>
 
@@ -975,9 +693,15 @@ export default function PharmacyPoolQueue() {
       <div className="space-y-4">
         {paginatedQueue.length > 0 ? (
           paginatedQueue.map((item) => {
-            const availableCount = item.prescriptions.filter(p => p.status === "Available" || p.status === "Substituted").length;
-            const outOfStockCount = item.prescriptions.filter(p => p.status === "Out of Stock").length;
-            const dispensedCount = item.prescriptions.filter(p => p.status === "Dispensed").length;
+            // Additional safety checks
+            if (!item.prescription_details || !item.prescription_details.patient_details) {
+              return null;
+            }
+
+            const patient = item.prescription_details.patient_details;
+            const prescription = item.prescription_details;
+
+            const calculatedWaitTime = Math.floor((Date.now() - new Date(item.created_at).getTime()) / 60000);
 
             return (
               <Card key={item.id} className="hover:shadow-md transition-shadow">
@@ -985,56 +709,58 @@ export default function PharmacyPoolQueue() {
                   <div className="flex items-start justify-between">
                     <div className="space-y-1">
                       <CardTitle className="text-lg flex items-center gap-3">
-                        <span>{item.patientName}</span>
+                        <span>{patient.name}</span>
                         <span className="text-sm text-muted-foreground font-normal">
-                          RX ID: {item.id}
+                          RX ID: {prescription.id.slice(-8)}
                         </span>
                       </CardTitle>
                       <CardDescription className="text-sm">
                         <div className="flex items-center gap-2 mb-2">
                           <Clock className="h-4 w-4 text-muted-foreground" />
                           <span className="text-orange-600 font-medium">
-                            Waiting: {item.waitTime}
+                            Waiting: {calculatedWaitTime} min
                           </span>
-                          <span className="text-blue-600">
-                            • Est. Complete: {item.estimatedCompletionTime}
-                          </span>
+                          {item.estimated_wait && (
+                            <span className="text-blue-600">
+                              • Est. Complete: {item.estimated_wait} min
+                            </span>
+                          )}
                         </div>
                         <div className="space-y-1">
                           <div className="flex flex-wrap gap-4 text-xs">
-                            <span><strong>Location:</strong> {item.location}</span>
-                            <span><strong>Gender:</strong> {item.gender}</span>
-                            <span><strong>Age:</strong> {item.age} yrs</span>
-                            <span><strong>Category:</strong> {item.employeeCategory}</span>
-                            <span><strong>Phone:</strong> {item.phoneNumber}</span>
+                            <span><strong>Location:</strong> {patient.location}</span>
+                            <span><strong>Gender:</strong> {patient.gender}</span>
+                            <span><strong>Age:</strong> {patient.age} yrs</span>
+                            <span><strong>Category:</strong> {patient.employee_category}</span>
+                            <span><strong>Phone:</strong> {patient.phone_number}</span>
                           </div>
                           <div className="flex items-center gap-4 text-xs">
-                            <span><strong>Prescribed by:</strong> {item.prescribedBy}</span>
+                            <span><strong>Prescribed by:</strong> {prescription.prescribed_by_name}</span>
                           </div>
-                          {item.sentFromConsultation && (
+                          {prescription.visit_details?.consultation_room && (
                             <div className="flex items-center gap-2">
                               <Stethoscope className="h-3 w-3 text-green-600" />
                               <span className="text-green-600 text-xs font-medium">
-                                From Consultation {item.consultationRoom && `(${item.consultationRoom})`}
+                                From Consultation ({prescription.visit_details.consultation_room.name})
                               </span>
                             </div>
                           )}
-                          {item.allergies.length > 0 && (
+                          {patient.allergies && patient.allergies.length > 0 && (
                             <div className="flex items-center gap-2">
                               <AlertTriangle className="h-3 w-3 text-red-600" />
                               <span className="text-red-600 text-xs font-medium">
-                                Allergies: {item.allergies.join(", ")}
+                                Allergies: {patient.allergies.join(", ")}
                               </span>
                             </div>
                           )}
-                          {item.specialInstructions && (
+                          {prescription.visit_details?.special_instructions && (
                             <div className="text-xs text-gray-600 bg-yellow-50 p-2 rounded">
-                              <strong>Special Instructions:</strong> {item.specialInstructions}
+                              <strong>Special Instructions:</strong> {prescription.visit_details.special_instructions}
                             </div>
                           )}
-                          {item.pharmacistNotes && (
+                          {item.pharmacist_notes && (
                             <div className="text-xs text-gray-600">
-                              <strong>Pharmacist Notes:</strong> {item.pharmacistNotes}
+                              <strong>Pharmacist Notes:</strong> {item.pharmacist_notes}
                             </div>
                           )}
                         </div>
@@ -1047,7 +773,7 @@ export default function PharmacyPoolQueue() {
                       <Badge className={getStatusColor(item.status)} variant="outline">
                         {item.status}
                       </Badge>
-                      {item.sentFromConsultation && (
+                      {prescription.visit_details?.consultation_room && (
                         <Badge className="bg-green-100 text-green-800 border-green-200" variant="outline">
                           From Consult
                         </Badge>
@@ -1058,20 +784,20 @@ export default function PharmacyPoolQueue() {
                 <CardContent className="pt-0">
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-muted-foreground mb-4">
                     <div>
-                      <strong className="text-foreground">Order Date:</strong>
-                      <div>{formatDate(item.orderDate)}</div>
+                      <strong>Order Date:</strong>
+                      <div>{formatDate(item.created_at)}</div>
                     </div>
                     <div>
-                      <strong className="text-foreground">Order Time:</strong>
-                      <div>{item.orderTime}</div>
+                      <strong>Order Time:</strong>
+                      <div>{formatTime(item.created_at)}</div>
                     </div>
                     <div>
-                      <strong className="text-foreground">Assigned to:</strong>
-                      <div>{item.assignedTo}</div>
+                      <strong>Assigned to:</strong>
+                      <div>{item.assigned_pharmacist_name || 'Unassigned'}</div>
                     </div>
                     <div>
-                      <strong className="text-foreground">Prescriptions:</strong>
-                      <div>{availableCount} available, {outOfStockCount} out of stock, {dispensedCount} dispensed</div>
+                      <strong>Prescriptions:</strong>
+                      <div>{prescription.available_items} available, {prescription.out_of_stock_items} out of stock, {prescription.dispensed_items} dispensed</div>
                     </div>
                   </div>
                   
@@ -1110,25 +836,6 @@ export default function PharmacyPoolQueue() {
                         All Dispensed
                       </Button>
                     )}
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="hover:bg-red-50"
-                      onClick={() => handleHold(item.id)}
-                      disabled={item.status === "On Hold" || item.status === "Dispensed"}
-                    >
-                      <AlertCircle className="h-4 w-4 mr-1" />
-                      Hold
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="hover:bg-blue-50"
-                      onClick={() => setSelectedPatientId(item.patientId)}
-                    >
-                      <Eye className="h-4 w-4 mr-1" />
-                      History
-                    </Button>
                   </div>
                 </CardContent>
               </Card>
@@ -1201,273 +908,6 @@ export default function PharmacyPoolQueue() {
         </div>
       )}
 
-      {/* Substitute Modal */}
-      <Dialog open={!!showSubstituteModal} onOpenChange={() => setShowSubstituteModal(null)}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Substitute Medication</DialogTitle>
-          </DialogHeader>
-          {showSubstituteModal && (() => {
-            const [queueId, prescriptionId] = showSubstituteModal.split('|');
-            const item = queue.find(q => q.id === queueId);
-            const prescription = item?.prescriptions.find(p => p.id === prescriptionId);
-
-            if (!prescription) return null;
-
-            return (
-              <div className="space-y-4">
-                <div className="bg-gray-50 p-3 rounded">
-                  <h4 className="font-medium">Original Prescription:</h4>
-                  <p>{prescription.medication} {prescription.strength}</p>
-                  <p className="text-sm text-gray-600">{prescription.dosage} {prescription.frequency}</p>
-                </div>
-
-                <div className="space-y-3">
-                  <div>
-                    <Label htmlFor="substitute-medication">Substitute Medication</Label>
-                    <Input
-                      id="substitute-medication"
-                      value={substituteForm.medication}
-                      onChange={(e) => setSubstituteForm(prev => ({ ...prev, medication: e.target.value }))}
-                      placeholder="Enter substitute medication name"
-                    />
-                  </div>
-
-                  <div>
-                    <Label htmlFor="substitute-strength">Strength</Label>
-                    <Input
-                      id="substitute-strength"
-                      value={substituteForm.strength}
-                      onChange={(e) => setSubstituteForm(prev => ({ ...prev, strength: e.target.value }))}
-                      placeholder="Enter strength (e.g., 500mg)"
-                    />
-                  </div>
-
-                  <div>
-                    <Label htmlFor="substitute-reason">Reason for Substitution</Label>
-                    <Select 
-                      value={substituteForm.reason}
-                      onValueChange={(value) => setSubstituteForm(prev => ({ ...prev, reason: value }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select reason" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Out of Stock">Out of Stock</SelectItem>
-                        <SelectItem value="Patient Preference">Patient Preference</SelectItem>
-                        <SelectItem value="Generic Substitution">Generic Substitution</SelectItem>
-                        <SelectItem value="Dosage Form Change">Dosage Form Change</SelectItem>
-                        <SelectItem value="Allergy Concern">Allergy Concern</SelectItem>
-                        <SelectItem value="Cost Consideration">Cost Consideration</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="flex gap-2 pt-4">
-                  <Button 
-                    onClick={() => handleSubstituteDrug(queueId, prescriptionId)}
-                    className="flex-1"
-                  >
-                    Confirm Substitution
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    onClick={() => setShowSubstituteModal(null)}
-                    className="flex-1"
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              </div>
-            );
-          })()}
-        </DialogContent>
-      </Dialog>
-
-      {/* Patient History Modal */}
-      <Dialog open={!!selectedPatientId} onOpenChange={() => setSelectedPatientId(null)}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden">
-          <DialogHeader>
-            <DialogTitle>Patient History</DialogTitle>
-          </DialogHeader>
-          {selectedPatientId && selectedPatientHistory && (() => {
-            const patient = queue.find(q => q.patientId === selectedPatientId);
-            if (!patient) return null;
-
-            const getInteractionStatusColor = (status: string) => {
-              switch (status) {
-                case "Minor": 
-                  return "bg-green-100 text-green-800 border-green-200";
-                case "Moderate": 
-                  return "bg-yellow-100 text-yellow-800 border-yellow-200";
-                case "Major": 
-                  return "bg-red-100 text-red-800 border-red-200";
-                default: 
-                  return "bg-gray-100 text-gray-800 border-gray-200";
-              }
-            };
-
-            const tabButtons = [
-              { id: "dispensed", label: "Dispensed Medications", icon: Pill },
-              { id: "interactions", label: "Drug Interactions", icon: AlertTriangle },
-              { id: "adherence", label: "Adherence Records", icon: Activity }
-            ];
-
-            return (
-              <div>
-                <div className="p-4 border-b">
-                  <h2 className="text-2xl font-bold">{patient.patientName} - Prescription History</h2>
-                  <p className="text-gray-600">Patient ID: {patient.patientId} | Age: {patient.age} | Gender: {patient.gender}</p>
-                  {patient.allergies.length > 0 && (
-                    <div className="flex items-center gap-2 mt-2">
-                      <AlertTriangle className="h-4 w-4 text-red-500" />
-                      <span className="text-sm text-red-600 font-medium">
-                        Allergies: {patient.allergies.join(", ")}
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex border-b">
-                  {tabButtons.map(tab => {
-                    const IconComponent = tab.icon;
-                    return (
-                      <button
-                        key={tab.id}
-                        onClick={() => setActiveHistoryTab(tab.id)}
-                        className={`px-4 py-3 text-sm font-medium flex items-center gap-2 border-b-2 transition-colors ${
-                          activeHistoryTab === tab.id
-                            ? "border-blue-500 text-blue-600 bg-blue-50"
-                            : "border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50"
-                        }`}
-                      >
-                        <IconComponent className="h-4 w-4" />
-                        {tab.label}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div className="p-6 overflow-y-auto max-h-[60vh]">
-                  {activeHistoryTab === "dispensed" && (
-                    <div className="space-y-4">
-                      <h3 className="text-lg font-semibold mb-4">Recently Dispensed Medications</h3>
-                      {selectedPatientHistory.dispensedMedications.length > 0 ? (
-                        selectedPatientHistory.dispensedMedications.map((medication) => (
-                          <Card key={medication.id}>
-                            <CardHeader className="pb-2">
-                              <div className="flex items-start justify-between">
-                                <div>
-                                  <CardTitle className="text-base">{medication.medication}</CardTitle>
-                                  <CardDescription>
-                                    Dispensed on {formatDate(medication.dispensedDate)} by {medication.dispensedBy}
-                                  </CardDescription>
-                                </div>
-                                {medication.adherenceScore && (
-                                  <Badge className={medication.adherenceScore >= 90 ? "bg-green-100 text-green-800" : medication.adherenceScore >= 80 ? "bg-yellow-100 text-yellow-800" : "bg-red-100 text-red-800"} variant="outline">
-                                    {medication.adherenceScore}% Adherence
-                                  </Badge>
-                                )}
-                              </div>
-                            </CardHeader>
-                            <CardContent>
-                              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
-                                <div><strong>Quantity:</strong> {medication.quantity}</div>
-                                <div><strong>Refills Left:</strong> {medication.refillsRemaining}</div>
-                                <div><strong>Prescribed by:</strong> {medication.prescribedBy}</div>
-                                {medication.nextRefillDate && (
-                                  <div className="col-span-2"><strong>Next Refill:</strong> {formatDate(medication.nextRefillDate)}</div>
-                                )}
-                              </div>
-                            </CardContent>
-                          </Card>
-                        ))
-                      ) : (
-                        <div className="text-center text-gray-500 py-8">
-                          <Pill className="mx-auto h-12 w-12 mb-4 text-gray-300" />
-                          <p>No dispensed medications found</p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {activeHistoryTab === "interactions" && (
-                    <div className="space-y-4">
-                      <h3 className="text-lg font-semibold mb-4">Drug Interactions</h3>
-                      {selectedPatientHistory.interactions.length > 0 ? (
-                        selectedPatientHistory.interactions.map((interaction) => (
-                          <Card key={interaction.id} className="border-l-4 border-l-yellow-400">
-                            <CardHeader className="pb-2">
-                              <div className="flex items-start justify-between">
-                                <CardTitle className="text-base">{interaction.drug1} + {interaction.drug2}</CardTitle>
-                                <Badge className={getInteractionStatusColor(interaction.interactionType)} variant="outline">
-                                  {interaction.interactionType}
-                                </Badge>
-                              </div>
-                            </CardHeader>
-                            <CardContent>
-                              <div className="space-y-2">
-                                <div><strong>Description:</strong> {interaction.description}</div>
-                                <div><strong>Recommendation:</strong> {interaction.recommendation}</div>
-                                <div><strong>Identified:</strong> {formatDate(interaction.dateIdentified)}</div>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        ))
-                      ) : (
-                        <div className="text-center text-gray-500 py-8">
-                          <Shield className="mx-auto h-12 w-12 mb-4 text-gray-300" />
-                          <p>No drug interactions detected</p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {activeHistoryTab === "adherence" && (
-                    <div className="space-y-4">
-                      <h3 className="text-lg font-semibold mb-4">Medication Adherence</h3>
-                      {selectedPatientHistory.adherenceRecords.length > 0 ? (
-                        selectedPatientHistory.adherenceRecords.map((record) => (
-                          <Card key={record.id}>
-                            <CardHeader className="pb-2">
-                              <CardTitle className="text-base">{record.medication}</CardTitle>
-                              <CardDescription>Period: {record.period}</CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                              <div className="space-y-2">
-                                <div className="flex items-center gap-4">
-                                  <div><strong>Adherence:</strong> {record.adherencePercentage}%</div>
-                                  <div><strong>Missed Doses:</strong> {record.missedDoses}</div>
-                                </div>
-                                <div className="w-full bg-gray-200 rounded-full h-2">
-                                  <div 
-                                    className={`h-2 rounded-full ${record.adherencePercentage >= 90 ? 'bg-green-500' : record.adherencePercentage >= 80 ? 'bg-yellow-500' : 'bg-red-500'}`}
-                                    style={{ width: `${record.adherencePercentage}%` }}
-                                  ></div>
-                                </div>
-                                {record.notes && (
-                                  <div><strong>Notes:</strong> {record.notes}</div>
-                                )}
-                              </div>
-                            </CardContent>
-                          </Card>
-                        ))
-                      ) : (
-                        <div className="text-center text-gray-500 py-8">
-                          <Activity className="mx-auto h-12 w-12 mb-4 text-gray-300" />
-                          <p>No adherence records available</p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })()}
-        </DialogContent>
-      </Dialog>
-
       {/* Prescription Modal */}
       <Dialog open={!!selectedQueueId} onOpenChange={() => setSelectedQueueId(null)}>
         <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
@@ -1476,20 +916,23 @@ export default function PharmacyPoolQueue() {
           </DialogHeader>
           {selectedQueueId && (() => {
             const item = queue.find(q => q.id === selectedQueueId);
-            if (!item) return null;
+            if (!item || !item.prescription_details) return null;
 
-            const selectablePrescriptions = item.prescriptions.filter(p => 
+            const selectablePrescriptions = item.prescription_details.items.filter(p => 
               p.status === "Available" || p.status === "Substituted"
             );
             const hasSelectablePrescriptions = selectablePrescriptions.length > 0;
             const allSelected = selectablePrescriptions.length > 0 && 
-              selectablePrescriptions.every(p => p.selectedForDispensing);
-            const someSelected = selectablePrescriptions.some(p => p.selectedForDispensing);
+              selectablePrescriptions.every(p => p.selected_for_dispensing);
+            const someSelected = selectablePrescriptions.some(p => p.selected_for_dispensing);
 
             return (
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <h4 className="font-medium text-sm">Prescriptions for {item.patientName} (RX ID: {item.id}):</h4>
+                  <h4 className="font-medium text-sm">
+                    Prescriptions for {item.prescription_details.patient_details.name} 
+                    (RX ID: {item.prescription_details.id.slice(-8)}):
+                  </h4>
                   {hasSelectablePrescriptions && (
                     <div className="flex items-center gap-2">
                       <Checkbox
@@ -1504,14 +947,14 @@ export default function PharmacyPoolQueue() {
                   )}
                 </div>
                 <div className="space-y-2">
-                  {item.prescriptions.map((prescription) => (
-                    <div key={prescription.id} className="bg-gray-50 p-3 rounded text-sm border-l-4 border-l-gray-300">
+                  {item.prescription_details.items.map((prescription) => (
+                    <div key={prescription.id} className="bg-gray-50 p-3 rounded text-sm">
                       <div className="flex items-start justify-between">
                         <div className="flex items-start gap-3 flex-1">
                           {(prescription.status === "Available" || prescription.status === "Substituted") && (
                             <Checkbox
                               id={`prescription-modal-${prescription.id}`}
-                              checked={prescription.selectedForDispensing || false}
+                              checked={prescription.selected_for_dispensing || false}
                               onCheckedChange={(checked) =>
                                 handlePrescriptionSelection(item.id, prescription.id, !!checked)
                               }
@@ -1519,62 +962,44 @@ export default function PharmacyPoolQueue() {
                           )}
                           <div className="space-y-1 flex-1">
                             <div className="font-medium flex items-center gap-2">
-                              {prescription.substitutedWith ? (
-                                <div>
-                                  <span className="line-through text-gray-500">
-                                    {prescription.medication} {prescription.strength}
-                                  </span>
-                                  <ArrowRight className="inline h-3 w-3 mx-1" />
-                                  <span className="text-blue-600">
-                                    {prescription.substitutedWith.medication} {prescription.substitutedWith.strength}
-                                  </span>
-                                </div>
-                              ) : (
-                                <span>{prescription.medication} {prescription.strength}</span>
-                              )}
+                              <span>{prescription.medication_details.name} {prescription.medication_details.strength}</span>
                               <Badge className={getPrescriptionStatusColor(prescription.status)} variant="outline">
-                                {prescription.status}
+                                {prescription.status_display}
                               </Badge>
-                              {prescription.genericAvailable && prescription.status !== "Substituted" && (
-                                <Badge className="bg-blue-100 text-blue-800 border-blue-200 text-xs" variant="outline">
-                                  Generic Available
-                                </Badge>
-                              )}
                             </div>
                             <div className="text-xs text-gray-600">
-                              <strong>Dosage:</strong> {prescription.dosage} {prescription.frequency}
+                              <strong>Dosage:</strong> {prescription.dosage} {prescription.frequency_display}
                             </div>
                             <div className="text-xs text-gray-600">
                               <strong>Duration:</strong> {prescription.duration} | <strong>Quantity:</strong> {prescription.quantity}
-                              {prescription.dispensedQuantity && (
+                              {prescription.dispensed_quantity && (
                                 <span className="text-green-600 ml-2">
-                                  (Dispensed: {prescription.dispensedQuantity})
+                                  (Dispensed: {prescription.dispensed_quantity})
                                 </span>
                               )}
                             </div>
                             <div className="text-xs text-gray-600">
                               <strong>Instructions:</strong> {prescription.instructions}
                             </div>
-                            {prescription.stockLevel !== undefined && (
-                              <div className="text-xs text-gray-600">
-                                <strong>Stock Level:</strong> {prescription.stockLevel} units
-                                {prescription.stockLevel < 10 && prescription.stockLevel > 0 && (
-                                  <span className="text-orange-600 ml-1">(Low Stock)</span>
-                                )}
-                              </div>
-                            )}
-                            {prescription.substitutedWith && (
+                            <div className="text-xs text-gray-600">
+                              <strong>Stock Level:</strong> {prescription.medication_details.current_stock} units
+                              {prescription.medication_details.current_stock < 10 && prescription.medication_details.current_stock > 0 && (
+                                <span className="text-orange-600 ml-1">(Low Stock)</span>
+                              )}
+                            </div>
+                            {prescription.substituted_with_details && (
                               <div className="text-xs text-blue-600 bg-blue-50 p-2 rounded mt-2">
-                                <strong>Substitution Reason:</strong> {prescription.substitutedWith.reason}<br/>
-                                <strong>Approved by:</strong> {prescription.substitutedWith.approvedBy}
+                                <strong>Substitution:</strong> {prescription.substituted_with_details.name} {prescription.substituted_with_details.strength}<br/>
+                                <strong>Reason:</strong> {prescription.substituted_with_details.reason}<br/>
+                                <strong>Approved by:</strong> {prescription.substituted_with_details.approved_by}
                               </div>
                             )}
-                            {prescription.dispensedBy && (
+                            {prescription.dispensed_by_name && (
                               <div className="text-xs text-green-600">
-                                <strong>Dispensed by:</strong> {prescription.dispensedBy} on {prescription.dispensedDate}
+                                <strong>Dispensed by:</strong> {prescription.dispensed_by_name} on {prescription.dispensed_date}
                               </div>
                             )}
-                            {prescription.selectedForDispensing && (prescription.status === "Available" || prescription.status === "Substituted") && (
+                            {prescription.selected_for_dispensing && (prescription.status === "Available" || prescription.status === "Substituted") && (
                               <div className="mt-2 p-2 bg-blue-50 rounded">
                                 <Label htmlFor={`partial-qty-modal-${prescription.id}`} className="text-xs">
                                   Quantity to Dispense (Max: {prescription.quantity})
@@ -1584,7 +1009,7 @@ export default function PharmacyPoolQueue() {
                                   type="number"
                                   min="1"
                                   max={prescription.quantity}
-                                  value={prescription.partialQuantity || prescription.quantity}
+                                  value={prescription.partial_quantity || prescription.quantity}
                                   onChange={(e) => handlePartialQuantityChange(
                                     item.id, 
                                     prescription.id, 
@@ -1617,7 +1042,7 @@ export default function PharmacyPoolQueue() {
                   <div className="p-3 bg-blue-50 rounded border border-blue-200">
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium text-blue-800">
-                        {selectablePrescriptions.filter(p => p.selectedForDispensing).length} item(s) selected for dispensing
+                        {selectablePrescriptions.filter(p => p.selected_for_dispensing).length} item(s) selected for dispensing
                       </span>
                       <Button
                         size="sm"
@@ -1633,6 +1058,62 @@ export default function PharmacyPoolQueue() {
               </div>
             );
           })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* Substitute Modal */}
+      <Dialog open={!!showSubstituteModal} onOpenChange={() => setShowSubstituteModal(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Substitute Medication</DialogTitle>
+            <DialogDescription>
+              Select a substitute for the out-of-stock medication
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="substitute-medication">Substitute Medication *</Label>
+              <Select
+                value={substituteForm.substitute_medication_id}
+                onValueChange={(value) => setSubstituteForm({ ...substituteForm, substitute_medication_id: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select substitute" />
+                </SelectTrigger>
+                <SelectContent>
+                  {medications.map((med) => (
+                    <SelectItem key={med.id} value={med.id}>
+                      {med.name} {med.strength}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="substitute-reason">Reason for Substitution *</Label>
+              <Textarea
+                id="substitute-reason"
+                value={substituteForm.reason}
+                onChange={(e) => setSubstituteForm({ ...substituteForm, reason: e.target.value })}
+                placeholder="Enter reason for substitution"
+                required
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => {
+              if (showSubstituteModal) {
+                const [, prescriptionItemId] = showSubstituteModal.split('|');
+                handleSubstituteDrug(prescriptionItemId);
+              }
+            }}>
+              Substitute
+            </Button>
+            <Button variant="outline" onClick={() => setShowSubstituteModal(null)}>
+              Cancel
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

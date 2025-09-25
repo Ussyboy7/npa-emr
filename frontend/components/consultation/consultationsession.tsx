@@ -1,18 +1,5 @@
 "use client";
 
-// Explanatory Comments:
-// - Manages the consultation session UI, including tabs for medical notes, vitals, lab orders, etc.
-// - Integrates with backend ConsultationSession model via API calls to /api/sessions/.
-// - Fetches patient vitals from /api/vitals/ and updates the UI accordingly.
-// - Handles session progress tracking and saving of consultation data.
-// - Implements room queue modal to show waiting patients and allow switching.
-// - Ensures alignment with backend models (Patient, ConsultationRoom, ConsultationSession).
-// - Uses mock data for consultation rooms and patients as a fallback (remove in production).
-// - Handles session ending with optional rescheduling and summary generation.
-// - Includes accessibility features (aria-labels, keyboard navigation).
-// - Resolves TS2786 error by renaming History import to HistoryIcon.
-// - Ensures VitalsData aligns with backend VitalReading model (uses bodymassindex).
-
 import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -66,11 +53,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { VitalsData, ConsultationProgress } from "@/types/consultation";
-import { toast } from "react-hot-toast";  // Assume this for notifications
+import { toast } from "react-hot-toast";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-// Local Patient interface to include "Queued"
 interface Patient {
   id: string;
   visitId: string;
@@ -95,7 +81,6 @@ interface Patient {
   vitalsAlerts?: string[];
 }
 
-// Local ConsultationRoom interface to include queue
 interface ConsultationRoom {
   id: string;
   name: string;
@@ -180,7 +165,7 @@ const ConsultationSession: React.FC<ConsultationSessionProps> = ({ roomId, initi
         const patientsData = (data.results || data).map((visit: any) => ({
           id: visit.id,
           visitId: visit.id,
-          patientId: visit.patient.id,
+          patientId: visit.patient?.id || "",
           name: visit.patient_name,
           age: visit.patient.age,
           gender: visit.patient.gender,
@@ -198,10 +183,13 @@ const ConsultationSession: React.FC<ConsultationSessionProps> = ({ roomId, initi
           visitDate: visit.visit_date,
           visitTime: visit.visit_time,
         }));
+        
         setPatients(patientsData);
         // Update vitalsCompleted for each patient
         for (const patient of patientsData) {
-          await fetchPatientVitals(patient.patientId);
+          if (patient.patientId) {
+            await fetchPatientVitals(patient.patientId);
+          }
         }
       } else {
         toast.error("Failed to fetch patients");
@@ -214,6 +202,7 @@ const ConsultationSession: React.FC<ConsultationSessionProps> = ({ roomId, initi
 
   // Fetch vitals for the current patient
   const fetchPatientVitals = useCallback(async (patientId: string): Promise<VitalsData & { vitalsAlerts: string[] } | undefined> => {
+    if (!patientId) return undefined;
     try {
       const response = await fetch(`${API_URL}/api/vitals/?patient=${patientId}`, {
         headers: { "Content-Type": "application/json" },
@@ -270,9 +259,19 @@ const ConsultationSession: React.FC<ConsultationSessionProps> = ({ roomId, initi
         }
       });
 
-      setCurrentPatient((prev) => (prev && prev.patientId === patientId ? { ...prev, vitals, vitalsAlerts: vitals.vitalsAlerts, vitalsCompleted: !!vitals } : prev));
+      setCurrentPatient((prev) => {
+        if (prev && prev.patientId === patientId && !prev.vitals) {
+          return { ...prev, vitals, vitalsAlerts: vitals.vitalsAlerts, vitalsCompleted: !!vitals };
+        }
+        return prev;
+      });
       setPatients((prev) =>
-        prev.map((p) => (p.patientId === patientId ? { ...p, vitals, vitalsAlerts: vitals.vitalsAlerts, vitalsCompleted: !!vitals } : p))
+        prev.map((p) => {
+          if (p.patientId === patientId && !p.vitals) {
+            return { ...p, vitals, vitalsAlerts: vitals.vitalsAlerts, vitalsCompleted: !!vitals };
+          }
+          return p;
+        })
       );
       return vitals;
     } catch (err) {
@@ -336,10 +335,14 @@ const ConsultationSession: React.FC<ConsultationSessionProps> = ({ roomId, initi
   useEffect(() => {
     fetchRoom();
     fetchPatients();
+  }, [fetchRoom, fetchPatients]);
+
+  // Separate effect for fetching current patient vitals
+  useEffect(() => {
     if (currentPatient && !currentPatient.vitals && currentPatient.patientId) {
       fetchPatientVitals(currentPatient.patientId);
     }
-  }, [fetchRoom, fetchPatients, currentPatient, fetchPatientVitals]);
+  }, [currentPatient, fetchPatientVitals]);
 
   // Calculate elapsed session time and edit permissions
   useEffect(() => {
@@ -480,7 +483,7 @@ const ConsultationSession: React.FC<ConsultationSessionProps> = ({ roomId, initi
   // Handle starting consultation with a specific patient
   const handleStartWithPatient = async (patient: Patient) => {
     try {
-      // Update visit status instead of creating a session
+      // Update visit status
       await fetch(`${API_URL}/api/visits/${patient.visitId}/`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -488,11 +491,11 @@ const ConsultationSession: React.FC<ConsultationSessionProps> = ({ roomId, initi
         body: JSON.stringify({
           status: "In Progress",
           consultation_start_time: new Date().toISOString(),
-          assigned_doctor: room?.doctor?.id || "current-doctor-id", // Replace with actual doctor ID
+          assigned_doctor: room?.doctor?.id || "current-doctor",  // From user context
         }),
       });
 
-      // Update room status
+      // Update room: occupied, remove from queue, set current_patient
       const currentQueue = room?.queue || [];
       const updatedQueue = currentQueue.filter((q: any) => q.patient_id !== patient.visitId);
       await fetch(`${API_URL}/api/rooms/${roomId}/`, {
@@ -507,10 +510,21 @@ const ConsultationSession: React.FC<ConsultationSessionProps> = ({ roomId, initi
         }),
       });
 
+      // Update room state
+      setRoom((prev) => prev ? { 
+        ...prev, 
+        currentPatient: patient.patientId, 
+        queue: updatedQueue, 
+        status: "occupied", 
+        startTime: new Date().toISOString() 
+      } : prev);
+      
       setCurrentPatient(patient);
-      setRoom((prev) => prev ? { ...prev, currentPatient: patient.patientId, startTime: new Date().toISOString(), status: "occupied" } : prev);
       setShowRoomQueueModal(false);
       toast.success(`Started consultation with ${patient.name}`);
+      
+      // Refresh patients to update the queue
+      fetchPatients();
     } catch (error) {
       console.error("Error starting consultation:", error);
       toast.error("Failed to start consultation");
@@ -520,7 +534,7 @@ const ConsultationSession: React.FC<ConsultationSessionProps> = ({ roomId, initi
   // Handle starting consultation with the next patient
   const handleStartWithNextPatient = async () => {
     const waitingPatients = patients
-      .filter((p) => (p.assignmentStatus === "Queued" || p.assignmentStatus === "Assigned") && p.consultationRoom === roomId)
+      .filter((p) => (p.assignmentStatus === "Queued" || p.assignmentStatus === "In Progress") && p.consultationRoom === roomId)
       .sort((a, b) => {
         const priorityOrder = { Emergency: 1, High: 2, Medium: 3, Low: 4 };
         return priorityOrder[a.priority] - priorityOrder[b.priority] || getMinutesDifference(a.visitDate, a.visitTime) - getMinutesDifference(b.visitDate, b.visitTime);
@@ -555,8 +569,18 @@ const ConsultationSession: React.FC<ConsultationSessionProps> = ({ roomId, initi
         }),
       });
 
+      // Update room state
+      setRoom((prev) => prev ? { 
+        ...prev, 
+        currentPatient: nextPatient.patientId, 
+        queue: updatedQueue, 
+        status: "occupied", 
+        startTime: new Date().toISOString() 
+      } : prev);
+      
       setCurrentPatient(nextPatient);
       fetchPatients();  // Refresh queue
+      toast.success(`Started consultation with ${nextPatient.name}`);
     } else {
       toast("No waiting patients");
     }
@@ -699,7 +723,7 @@ const ConsultationSession: React.FC<ConsultationSessionProps> = ({ roomId, initi
       </div>
 
       {/* Room Queue Modal */}
-      <Dialog open={showRoomQueueModal} onOpenChange={setShowRoomQueueModal}>
+      <Dialog open={showRoomQueueModal} onOpenChange={() => setShowRoomQueueModal(false)}>
         <DialogContent className="max-w-5xl overflow-y-auto max-h-[90vh]">
           <DialogHeader>
             <DialogTitle>{room.name} Queue</DialogTitle>
@@ -751,21 +775,21 @@ const ConsultationSession: React.FC<ConsultationSessionProps> = ({ roomId, initi
                 <div className="flex items-center justify-between mb-3">
                   <h4 className="text-sm font-medium flex items-center gap-2">
                     <Users className="h-4 w-4" />
-                    Waiting Patients ({patients.filter((p) => (p.assignmentStatus === "Queued" || p.assignmentStatus === "Assigned") && p.consultationRoom === roomId).length})
+                    Waiting Patients ({patients.filter((p) => (p.assignmentStatus === "Queued" || p.assignmentStatus === "In Progress") && p.consultationRoom === roomId).length})
                   </h4>
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={handleStartWithNextPatient}
-                    disabled={patients.filter((p) => (p.assignmentStatus === "Queued" || p.assignmentStatus === "Assigned") && p.consultationRoom === roomId).length === 0}
+                    disabled={patients.filter((p) => (p.assignmentStatus === "Queued" || p.assignmentStatus === "In Progress") && p.consultationRoom === roomId).length === 0}
                   >
                     Start with Next Patient
                   </Button>
                 </div>
-                {patients.filter((p) => (p.assignmentStatus === "Queued" || p.assignmentStatus === "Assigned") && p.consultationRoom === roomId).length > 0 ? (
+                {patients.filter((p) => (p.assignmentStatus === "Queued" || p.assignmentStatus === "In Progress") && p.consultationRoom === roomId).length > 0 ? (
                   <div className="space-y-2 max-h-64 overflow-y-auto">
                     {patients
-                      .filter((p) => (p.assignmentStatus === "Queued" || p.assignmentStatus === "Assigned") && p.consultationRoom === roomId)
+                      .filter((p) => (p.assignmentStatus === "Queued" || p.assignmentStatus === "In Progress") && p.consultationRoom === roomId)
                       .sort((a, b) => {
                         const priorityOrder = { Emergency: 1, High: 2, Medium: 3, Low: 4 };
                         return priorityOrder[a.priority] - priorityOrder[b.priority] || getMinutesDifference(a.visitDate, a.visitTime) - getMinutesDifference(b.visitDate, b.visitTime);
@@ -991,7 +1015,7 @@ const ConsultationSession: React.FC<ConsultationSessionProps> = ({ roomId, initi
         </AlertDialogContent>
       </AlertDialog>
     </div>
-  );
+  ); 
 };
 
 export default ConsultationSession;
